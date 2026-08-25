@@ -16,7 +16,15 @@
 # is dead. Keep it in a file that can be run and tested on its own.
 set -uo pipefail
 
-cat | /usr/bin/python3 "$HOME/.claude/hooks/lib/websearch-cache.py"
+# Resolve lib/ from THIS FILE, not from $HOME. The hook works when it is
+# installed and also when it is run straight out of a clone, which is what
+# the test suite and anyone evaluating it before installing will do. The
+# $HOME form failed both, with an error that reads as the guard refusing.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB="$HERE/lib/websearch-cache.py"
+[ -f "$LIB" ] || LIB="$HOME/.claude/hooks/lib/websearch-cache.py"
+
+cat | /usr/bin/python3 "$LIB"
 
 # Keep the cache from growing without bound: drop anything older than 30 days.
 find "$HOME/.claude/state/websearch-cache" -type f -mtime +30 -delete 2>/dev/null

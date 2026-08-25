@@ -20,9 +20,22 @@ fail=0
 section() { printf '\n== %s ==\n' "$1"; }
 
 section "syntax"
-for f in "$REPO"/hooks/*.sh; do
-  if bash -n "$f" 2>/dev/null; then printf '  ok   %s\n' "$(basename "$f")"
-  else printf '  FAIL %s does not parse\n' "$(basename "$f")"; fail=1; fi
+# Parsed by every bash on this machine, not just the newest one. /bin/bash on
+# macOS is 3.2 and stays 3.2, and it cannot parse a quoted heredoc inside a
+# command substitution when the body contains an apostrophe. One hook did
+# exactly that: fine under bash 5, and a Stop hook that exits non-zero on every
+# single turn for anyone on a stock Mac. CI on macos-latest is what found it.
+SHELLS="bash"
+if [ -x /bin/bash ] && [ "$(command -v bash)" != "/bin/bash" ]; then
+  SHELLS="$SHELLS /bin/bash"
+fi
+for f in "$REPO"/hooks/*.sh "$REPO"/install.sh "$REPO"/doctor.sh; do
+  ok=1
+  for sh in $SHELLS; do
+    "$sh" -n "$f" 2>/dev/null || { ok=0; printf '  FAIL %s does not parse under %s (%s)\n' \
+      "$(basename "$f")" "$sh" "$("$sh" --version | head -1 | sed 's/.*version //;s/ .*//')"; }
+  done
+  [ "$ok" -eq 1 ] && printf '  ok   %s\n' "$(basename "$f")" || fail=1
 done
 for f in "$REPO"/hooks/*.py "$REPO"/hooks/lib/*.py "$REPO"/tests/*.py; do
   [ -e "$f" ] || continue

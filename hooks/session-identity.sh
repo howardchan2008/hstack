@@ -18,6 +18,8 @@
 # Nearest ancestor process that is a claude-code binary. Deliberately does
 # not match /Applications/Claude.app (the desktop shell) -- that one is
 # shared by every session and would collapse them onto a single anchor.
+# shellcheck disable=SC2120  # the argument is optional by design and defaults
+# to $$; callers that pass nothing are the normal case, not a mistake.
 guild_anchor_pid() {
   local p="${1:-$$}" i=0 info pp comm
   while [ "$i" -lt 12 ]; do

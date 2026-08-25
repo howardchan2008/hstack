@@ -648,6 +648,8 @@ while IFS= read -r REPO_ROOT; do
         iskip=0
         while IFS= read -r pat; do
           [ -n "$pat" ] || continue
+          # shellcheck disable=SC2254  # $pat is an ignore-file glob and must
+          # stay unquoted: quoting it turns the pattern into a literal.
           case "$irel" in $pat) iskip=1; break ;; esac
         done <<< "$PATS"
         if [ "$iskip" -eq 1 ]; then
@@ -1193,7 +1195,12 @@ printf '%s | %s | BLOCKED |%s\n' "$(date '+%F %T')" "$SID" \
 # observable: paired system/compact_boundary + user/isCompactSummary records.
 # The SIGNALS above are short and differ every time, so they always ship in full.
 # Fail-safe: unreadable transcript or non-numeric count re-delivers the full text.
-COACH_FULL="$(cat <<'COACHEOF'
+# A FUNCTION, not COACH_FULL="$(cat <<EOF ...)". bash 3.2, which is what
+# /bin/bash still is on macOS, cannot parse a quoted heredoc inside a command
+# substitution when the body contains an apostrophe. This body has six, and
+# the whole file failed `bash -n` on a stock Mac while parsing fine under
+# bash 5. A Stop hook that will not parse exits non-zero on every turn.
+coach_full() { cat <<'COACHEOF'
 Answer both, then act:
   1. Why stop HERE? Name what makes this a boundary and not just a pause.
   2. Why can you not continue? If the blocker is the owner's decision, an external
@@ -1260,10 +1267,10 @@ exactly what the line is for, and filing it is finishing, not quitting. What the
 log watches for is the other shape: a reason that names work you could simply
 have done. Both get written down; only one of them is a miss.)
 COACHEOF
-)"
+}
 COACH_PTR="(Standing guidance omitted: delivered earlier this session and still in
 context. It re-delivers after a compaction. Source: hooks/stop-justify.sh.)"
-COACH="$COACH_FULL"
+COACH="$(coach_full)"
 COACH_STATE="$STATE_DIR/$SID.coach"
 if [ -n "${TRANSCRIPT:-}" ] && [ -r "${TRANSCRIPT:-}" ]; then
   _nc="$(grep -c '"subtype":"compact_boundary"' "$TRANSCRIPT" 2>/dev/null)"

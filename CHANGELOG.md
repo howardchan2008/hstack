@@ -39,6 +39,15 @@ a stranger can install.
   this repo does not contain, so a stranger's first session printed fifteen
   REVIEW lines about files that were never theirs. The roster is now built from
   the manifest at scrub time and `tests/parity.py` keeps it equal.
+- `stop-justify.sh` did not parse under bash 3.2, which is what `/bin/bash` is
+  on macOS and will stay. A quoted heredoc inside a command substitution breaks
+  there when the body contains an apostrophe, and this one has six. Under bash 5
+  it was fine; on a stock Mac it is a Stop hook that exits non-zero on every
+  turn. Found by CI on macos-latest, and `tests/run.sh` now parses every hook
+  with every bash on the machine.
+- `probe-dedupe.sh` and `websearch-cache.sh` resolved their `lib/` module from
+  `$HOME`, so both failed when run out of a clone rather than an install. They
+  resolve from their own location now, with the `$HOME` path as the fallback.
 - A test fixture in `prompt-items.py` was a real prompt. Replaced with a
   synthetic one; the assertion it feeds is unchanged.
 
