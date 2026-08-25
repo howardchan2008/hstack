@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash|Edit|Write", "hooks": [
+        { "type": "command", "command": "bash $HOME/.claude/hooks/risk-checkpoint.sh" } ] },
+      { "matcher": "Bash", "hooks": [
+        { "type": "command", "command": "bash $HOME/.claude/hooks/probe-dedupe.sh" },
+        { "type": "command", "command": "bash $HOME/.claude/hooks/curl-router.sh" },
+        { "type": "command", "command": "bash $HOME/.claude/hooks/grep-portability.sh" } ] },
+      { "matcher": "Write|Edit", "hooks": [
+        { "type": "command", "command": "bash $HOME/.claude/hooks/dash-gate.sh" },
+        { "type": "command", "command": "bash $HOME/.claude/hooks/ls-before-write.sh" } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [
+        { "type": "command", "command": "bash $HOME/.claude/hooks/wiring-verify.sh" },
+        { "type": "command", "command": "bash $HOME/.claude/hooks/session-identity.sh" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [
+        { "type": "command", "command": "python3 $HOME/.claude/hooks/prompt-items.py" } ] }
+    ],
+    "Stop": [
+      { "hooks": [
+        { "type": "command", "command": "bash $HOME/.claude/hooks/stop-justify.sh" },
+        { "type": "command", "command": "python3 $HOME/.claude/hooks/closeout-shape.py" } ] }
+    ]
+  }
+}
