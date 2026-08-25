@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# PROVENANCE, added <phone>. the corpus sizes and the named example transcripts were measured 2026-07 against the then-live transcript tree.
+# PROVENANCE, added 2026-08-23. the corpus sizes and the named example transcripts were measured 2026-07 against the then-live transcript tree.
 # That tree is NOT the corpus any more: transcript-archive moved 3,638 of the
-# 3,857 transcripts to ~/Archive/claude-transcripts on <phone>, so the live
+# 3,857 transcripts to ~/Archive/claude-transcripts on 2026-08-18, so the live
 # tree is about 6% of sessions. These numbers are HISTORICAL and are not
 # reproducible as stated. Re-derive across BOTH trees before citing them; see
 # ~/.claude/bin/claims-audit and hooks/lib/probe-dedupe-backtest.py for the shape.
@@ -19,9 +19,9 @@
 #   A. cross-worktree content overlap: same path, different bytes, >1 tree.
 #   B. same-tree HEAD drift: HEAD moved between two runs of MY session, i.e.
 #      another writer committed into the one tree I am working in.
-#   B exists because A is structurally blind at TREE_COUNT=1. See <phone>.
+#   B exists because A is structurally blind at TREE_COUNT=1. See 2026-07-27.
 #
-# FALSE-POSITIVE GUARDS  (learned the hard way, <phone>)
+# FALSE-POSITIVE GUARDS  (learned the hard way, 2026-07-23)
 #   1. gitignored paths force-added into a worktree index are NOT a collision.
 #      a venture bootstraps SOT.md + docs/ into every worktree index; both
 #      worktrees showed 59-68 "staged" files that were pure noise.
@@ -44,7 +44,7 @@
 set -uo pipefail
 
 # ---- --owner <path>: ownership query (read-only, never silent) -------------
-# WHY THIS IS A REAL SUBCOMMAND NOW (<phone>).
+# WHY THIS IS A REAL SUBCOMMAND NOW (2026-07-28).
 #   stop-justify.sh told every session to test "is someone else working here"
 #   with `session-collide.sh --owner <path>`. No such flag existed. This file
 #   is a hook and took no arguments at all, so the flag fell through, the
@@ -109,8 +109,8 @@ if [ "${1:-}" = "--owner" ]; then
   . "${BASH_SOURCE[0]%/*}/session-identity.sh"
   guild_resolve_session_id
   ME="$SESSION_ID"
-  # CALLER IDENTITY IS A SEPARATE AXIS FROM OWNER IDENTITY (<phone>).
-  # The <phone> fix taught this tool that an unknown OWNER is not "nobody".
+  # CALLER IDENTITY IS A SEPARATE AXIS FROM OWNER IDENTITY (2026-08-04).
+  # The 2026-07-28 fix taught this tool that an unknown OWNER is not "nobody".
   # It never learned the mirror case: an unknown CALLER is not "everyone else".
   # With ME empty the "$fid" = "$ME" test below cannot match, so every live
   # session counts as foreign, and this session's own commits print without the
@@ -218,7 +218,7 @@ if [ "${1:-}" = "--owner" ]; then
     echo "  attributed here. Do not read that absence as \"they are mine\"."
   else
     echo "uncommitted edits:"
-    # SINGLE-PASS TRANSCRIPT MAP (<phone>). The find+grep below used to run
+    # SINGLE-PASS TRANSCRIPT MAP (2026-08-04). The find+grep below used to run
     # once PER DIRTY FILE, re-reading the whole transcript corpus every time:
     # O(dirty files x corpus). Profiled here, 8 dirty files x 5.3s = 45s, which
     # blew risk-checkpoint's 30s ledger budget, so every force-push printed
@@ -248,7 +248,7 @@ if [ "${1:-}" = "--owner" ]; then
     # depend on the fast path being installed.
     OWNER_SCAN_DAYS="${OWNER_SCAN_DAYS:-2}"
     COLLIDE_PROJECTS_DIR="${COLLIDE_PROJECTS_DIR:-$HOME/.claude/projects}"
-    # EMPTY IS AN ANSWER, NOT A FAILURE (<phone>). The branch below used to
+    # EMPTY IS AN ANSWER, NOT A FAILURE (2026-08-06). The branch below used to
     # be selected by [ -n "$COLLIDE_MAP" ], which cannot distinguish "rg ran and
     # found no transcript touching this path" from "rg never ran". Those need
     # OPPOSITE handling: the first is the final answer (this path is genuinely
@@ -331,7 +331,7 @@ UNIONEOF
       esac
       GARGS=(-e "\"file_path\":\"$dabs\"" -e "\"notebook_path\":\"$dabs\"")
       [ -n "$dalt" ] && GARGS+=(-e "\"file_path\":\"$dalt\"" -e "\"notebook_path\":\"$dalt\"")
-      # SCAN WINDOW. Measured <phone>: grep is the entire cost of this query.
+      # SCAN WINDOW. Measured 2026-07-27: grep is the entire cost of this query.
       # The 7-day corpus is 1325 files / 1.6 GB and takes 15s; the 2-day corpus
       # is 26 files / 262 MB and takes 2.4s. The find traversal itself is 0.03s
       # and the JSON parse of the surviving candidates is 0.03s, so neither is
@@ -366,7 +366,7 @@ UNIONEOF
       # COMMITTED EDITS ARE NOT IN FLIGHT. Without this cutoff the query names
       # every session that touched the path inside the window, including ones
       # whose work is already in HEAD, so a file with any history reads as
-      # contended and the warning gets ignored. Found <phone> on this very
+      # contended and the warning gets ignored. Found 2026-07-28 on this very
       # file: two sessions were reported as holding it while their edits were
       # committed. The dirty bytes can only have been written after the last
       # commit that touched the path, so that commit's time is the floor.
@@ -377,7 +377,7 @@ UNIONEOF
       # breaks in exactly the case this tool exists for: a CONCURRENT session
       # commits this same path for an unrelated reason, its timestamp becomes
       # the floor, and every other session's still-dirty edit sinks below it.
-      # Measured <phone> on this very file. Session a4949e8b committed
+      # Measured 2026-07-28 on this very file. Session a4949e8b committed
       # 6481fc6 at 17:31:39 touching tests/risk-checkpoint-test.sh; session
       # e0d86b2a's 17:29:49 edit introduced RC_HOOK_UNDER_TEST, a string that
       # commit does not contain anywhere. That edit was live, uncommitted, and
@@ -393,7 +393,7 @@ UNIONEOF
       [ -n "$CUT" ] || CUT=0
       HEADBLOB="$(mktemp "${TMPDIR:-/tmp}/collide-head-XXXXXX")"
       git -C "$QROOT" show "HEAD:$drel" > "$HEADBLOB" 2>/dev/null || : > "$HEADBLOB"
-      # SHELL-WRITE LEDGER (<phone>). Effect-recorded writers for this path,
+      # SHELL-WRITE LEDGER (2026-08-07). Effect-recorded writers for this path,
       # most recent first, deduped. Consulted by the python below ONLY when the
       # transcript scan produced no rows, so tool-call evidence keeps priority
       # and this can never override a named writer.
@@ -436,7 +436,7 @@ def _texts(i):
 def _frags(strs):
     # Per LINE, never the whole new_string as one substring.
     #
-    # Caught <phone> by tests/session-collide-test.sh case 1, against the
+    # Caught 2026-07-28 by tests/session-collide-test.sh case 1, against the
     # first version of this very content test. An Edit inserting
     #     "line1\nZZQQ_MARKER"
     # no longer appears verbatim in a worktree that reads
@@ -474,7 +474,7 @@ TSRE=re.compile(r'"timestamp":"([^"]+)"')
 rows=[]; stale=[]
 # RESUMED TRANSCRIPTS INHERIT THEIR PARENT'S RECORDS VERBATIM, and the copy is
 # not marked as a copy: sessionId is REWRITTEN to the heir, so one edit reads as
-# several sessions' work. Measured <phone> on handoff/culver/READING-LIST.md.
+# several sessions' work. Measured 2026-08-01 on handoff/culver/READING-LIST.md.
 # One Write, tool_use toolu_01CNVX72jUuWfcaULAxisJZE, stamped 05:38:32.808Z,
 # present in transcripts 85565659, 339ecd2d and 32105b48 with each file's OWN
 # sessionId written onto it. --owner reported three sessions holding the path,
@@ -577,7 +577,7 @@ for tf,own_start,hits,errids in FILES:
 rows.sort(reverse=True); stale.sort(reverse=True)
 if not rows:
     # Effect-recorded shell writes. CONSULTED IN BOTH no-row branches, and the
-    # reason is a bug this very block was already caught missing (<phone>).
+    # reason is a bug this very block was already caught missing (2026-08-07).
     # It first went into the `else` only -- the branch for a path with no edit
     # history at all -- so the motivating case still failed: a file that older
     # sessions HAD edited, then I shell-patched, has rows, they are all in HEAD,
@@ -633,11 +633,11 @@ if not rows:
         # does NOT set an owner, because "last committer" is not "current
         # writer", and treating it as such is exactly the false positive this
         # tool exists to prevent.
-        # Added <phone>: --owner returned a bare UNATTRIBUTED for all 85
+        # Added 2026-08-02: --owner returned a bare UNATTRIBUTED for all 85
         # dirty a venture paths, which is indistinguishable from a broken
         # tool and left the caller with nowhere to go next.
         # DO NOT print the git author here. Checked against the real repo
-        # <phone>: every commit carries the owner's git identity no matter
+        # 2026-08-03: every commit carries the owner's git identity no matter
         # which lane or agent wrote it, so an author column is constant, and
         # an "all one author => one lane" inference built on it is vacuous,
         # always true, and reads as evidence while carrying none. The lane
@@ -674,7 +674,7 @@ for ts,sid,n,bad in rows:
     # the stale printer above already prints it in full, so truncating here
     # made one fact render two ways depending on which branch you landed in;
     # and the id is meant to be pasted into `guild-session.sh --who`, which a
-    # lopped-off prefix cannot be. Caught <phone> by case 1 of
+    # lopped-off prefix cannot be. Caught 2026-07-28 by case 1 of
     # tests/session-collide-test.sh, which greps for the id it planted.
     print(f"    session {sid}  {n} edit(s){fail}, last {when}{tag}{mine}")
 ATTR
@@ -741,7 +741,7 @@ STAMP="$STAMP_DIR/$KEY"
 guild_resolve_session_id
 
 # ---- detector B: same-tree HEAD drift --------------------------------------
-# THE GAP THIS CLOSES (<phone>). Detector A's trigger is "same path,
+# THE GAP THIS CLOSES (2026-07-27). Detector A's trigger is "same path,
 # different content, in >1 worktree", which is UNSATISFIABLE when there is
 # only one tree. That is precisely the topology that bit us: a second session
 # committed a67c74d and 3b4432b into this very tree and pushed them, while
@@ -772,7 +772,7 @@ if [ -n "$SESSION_ID" ] && [ "$HEAD_NOW" != "none" ]; then
   if [ -n "$PREV" ] && [ "$PREV" != "$HEAD_NOW" ]; then
     if git -C "$PRIMARY" merge-base --is-ancestor "$PREV" "$HEAD_NOW" 2>/dev/null; then
       DRIFT="advanced"
-      # NAME THE OWNER, do not merely report the movement (<phone>).
+      # NAME THE OWNER, do not merely report the movement (2026-07-27).
       # An anonymous sha is exactly what sends a session off investigating its
       # co-workers, and in the worst case reverting them. guild-session.sh
       # records sha -> session for every hooked session, so resolve it here and
@@ -807,7 +807,7 @@ if [ -n "$SESSION_ID" ] && [ "$HEAD_NOW" != "none" ]; then
 fi
 
 # ---- shell-write ledger ----------------------------------------------------
-# WHY THIS EXISTS (<phone>). Attribution reads transcripts for
+# WHY THIS EXISTS (2026-08-07). Attribution reads transcripts for
 # "file_path":"<abs>", a key only Edit/Write/MultiEdit/NotebookEdit record. A
 # write made THROUGH Bash -- a > redirect, sed -i, cp, or a python heredoc
 # calling open(p,"w") -- names its path nowhere the scan can see, so --owner
@@ -859,7 +859,7 @@ _record_shell_writes() {
       # not "changed BY me". So every session whose snapshot predates a foreign
       # write claims that write on its next Bash call, and in a repo with three
       # live sessions attribution converges on everyone wrote everything.
-      # Measured <phone> while verifying this very feature: g.txt was
+      # Measured 2026-08-07 while verifying this very feature: g.txt was
       # shell-written once, by session aaaabbbb, and a later loop of unrelated
       # refreshes made deadbeef claim it too. Both names printed, one was false.
       #
@@ -934,7 +934,7 @@ while IFS= read -r t; do
     fi
     # Hash the ACTUAL WORKING-TREE BYTES, not the index entry.
     #
-    # Using `git ls-files -s` here was a real bug (caught in test, <phone>):
+    # Using `git ls-files -s` here was a real bug (caught in test, 2026-07-23):
     # for an unstaged " M" file the index hash is still the HEAD blob, so two
     # worktrees branched from the SAME commit with different uncommitted edits
     # produce IDENTICAL hashes -> collision silently missed. That is the most
@@ -970,7 +970,7 @@ COLLISIONS=$(
 # there explains why the count is deliberately not a trigger. Computing it
 # unconditionally cost ~600ms per throttle window: one `lsof -a -p <pid> -d cwd`
 # for every surviving pid (7 of 30 candidates here), every time the 60s cache
-# expired, and then threw the answer away. Measured <phone>.
+# expired, and then threw the answer away. Measured 2026-08-17.
 OTHER=0
 if [ -n "${COLLIDE_DEBUG:-}" ] && command -v lsof >/dev/null 2>&1 && command -v pgrep >/dev/null 2>&1; then
   # Build the set of my own ancestors so the hook never counts itself.
@@ -980,7 +980,7 @@ if [ -n "${COLLIDE_DEBUG:-}" ] && command -v lsof >/dev/null 2>&1 && command -v 
   # phantom "other sessions" on a completely idle repo.
   MINE=" "
   anc=$$
-  for _ in <phone>; do
+  for _ in 1 2 3 4 5 6 7 8; do
     [ -z "$anc" ] || [ "$anc" = "0" ] || [ "$anc" = "1" ] && break
     MINE="$MINE$anc "
     anc=$(ps -o ppid= -p "$anc" 2>/dev/null | tr -d ' ')

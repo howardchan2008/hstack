@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse(Write): refuse to write blind into a directory you have not looked at.
 #
-# WHY THIS EXISTS: on <phone> a session re-ran an entire finished audit from
+# WHY THIS EXISTS: on 2026-08-11 a session re-ran an entire finished audit from
 # scratch because it never listed the working directory. The sequence was:
 #
 #   mkdir -p ~/repos/.attic/_data/the owner-os-data/unfixable-audit && echo ok   -> printed "ok"
@@ -16,7 +16,7 @@
 # TWO BLOCKING CASES, both narrow:
 #
 #   1. The target file already exists. This is a clobber. Claude Code nominally
-#      wants a Read first; it did not stop the <phone> case, so this does.
+#      wants a Read first; it did not stop the 2026-08-11 case, so this does.
 #   2. The target file is new, but the directory contains a completion marker
 #      (REPORT.md, FIX-BACKLOG.md, SUMMARY.md, RESULTS.md, FINDINGS.md). That is
 #      the signal the job in this directory is already done. Read it first.

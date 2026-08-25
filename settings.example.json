@@ -1,29 +1,171 @@
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Bash|Edit|Write", "hooks": [
-        { "type": "command", "command": "bash $HOME/.claude/hooks/risk-checkpoint.sh" } ] },
-      { "matcher": "Bash", "hooks": [
-        { "type": "command", "command": "bash $HOME/.claude/hooks/probe-dedupe.sh" },
-        { "type": "command", "command": "bash $HOME/.claude/hooks/curl-router.sh" },
-        { "type": "command", "command": "bash $HOME/.claude/hooks/grep-portability.sh" } ] },
-      { "matcher": "Write|Edit", "hooks": [
-        { "type": "command", "command": "bash $HOME/.claude/hooks/dash-gate.sh" },
-        { "type": "command", "command": "bash $HOME/.claude/hooks/ls-before-write.sh" } ] }
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/risk-checkpoint.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/probe-dedupe.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/curl-router.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/grep-portability.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/pipestatus-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/dash-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/fetch-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/ls-before-write.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/lane-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/agent-budget.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__click_.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/click-credit-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/websearch-router.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/websearch-cache.sh"
+          }
+        ]
+      }
     ],
     "SessionStart": [
-      { "hooks": [
-        { "type": "command", "command": "bash $HOME/.claude/hooks/wiring-verify.sh" },
-        { "type": "command", "command": "bash $HOME/.claude/hooks/session-identity.sh" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/wiring-verify.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/session-identity.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/session-collide.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/context-restore.sh"
+          }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "hooks": [
-        { "type": "command", "command": "python3 $HOME/.claude/hooks/prompt-items.py" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/prompt-items.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/carryover-queue.py"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/closeout-preflight.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/state-verify-inject.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/burn-context.sh"
+          }
+        ]
+      }
     ],
     "Stop": [
-      { "hooks": [
-        { "type": "command", "command": "bash $HOME/.claude/hooks/stop-justify.sh" },
-        { "type": "command", "command": "python3 $HOME/.claude/hooks/closeout-shape.py" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/stop-justify.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/closeout-shape.py"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/context-save.sh"
+          }
+        ]
+      }
     ]
   }
 }

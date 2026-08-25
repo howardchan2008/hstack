@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+# carryover-queue.py: UserPromptSubmit. A new prompt is ADDITIVE, never a cancel.
+#
+# The failure this fixes, the owner 2026-08-16: "when i interrupt an existing section
+# with a new prompt, still do my original prompt's commands but queue them, so u
+# dont miss anything at all". Measured before writing this: 198 `Request interrupted
+# by user` markers across 83 transcripts. Every one of them is a point where in-flight
+# work could silently evaporate, because the model's default reading of a new prompt
+# is "the old one is superseded". It is not. It is a push onto a stack.
+#
+# This is the same class as the rules/common "answer EVERY part of the message" rule,
+# pointed at the time axis instead of the sentence axis. That rule is prose and prose
+# was measured at ~40% failure. This one is injected text carrying the actual item
+# list, so the model cannot forget WHAT was pending, only choose to ignore it.
+#
+# Two independent signals, because either alone has a hole:
+#   A. Open tasks in ~/.claude/tasks/<session_id>/*.json (status not completed or
+#      cancelled). Solid when TaskCreate was used. Empty when it was not.
+#   B. The previous turn ended on an interrupt marker in the transcript. Catches the
+#      case where nothing was ever written down, which is exactly the case where
+#      work is most likely to be lost.
+#
+# Fails open, always. A carryover reminder is never worth blocking a prompt over.
+
+import json
+import os
+import sys
+import glob
+import re
+
+# Overridable so the self-test can actually reach a fixture. Without this the first
+# test run printed a clean PASS while open_tasks() had silently read the real task
+# dir and returned nothing, so the task half of the hook was never exercised at all.
+TASK_ROOT = os.environ.get("CARRYOVER_TASK_ROOT") or os.path.expanduser("~/.claude/tasks")
+OPEN_STATES = {"pending", "in_progress", "in-progress", "blocked", "active"}
+TAIL_BYTES = 400_000  # enough for the last few turns without reading a 40MB transcript
+
+# the owner saying any of these means the queue is genuinely being dropped, so the hook
+# must not then insist. It still names the items, because "drop it" needs to point at
+# something specific: dropping the wrong item silently is the same defect mirrored.
+CANCEL = re.compile(
+    r"\b(drop (that|it|those|the)|forget (that|it|about)|cancel (that|it)|"
+    r"never ?mind|scrap (that|it)|abandon|stop (that|doing)|skip (that|it)|"
+    r"don'?t bother|no longer|leave (that|it))\b",
+    re.I,
+)
+
+
+def open_tasks(session_id):
+    """Items this session opened and never closed."""
+    out = []
+    if not session_id:
+        return out
+    d = os.path.join(TASK_ROOT, session_id)
+    for f in sorted(glob.glob(os.path.join(d, "*.json"))):
+        try:
+            with open(f, encoding="utf-8", errors="replace") as fh:
+                t = json.load(fh)
+        except Exception:
+            continue
+        if not isinstance(t, dict):
+            continue
+        status = str(t.get("status") or "").lower()
+        if status in OPEN_STATES:
+            subject = str(t.get("subject") or t.get("description") or "").strip()
+            if subject:
+                out.append((status, subject[:120]))
+    return out
+
+
+def was_interrupted(transcript_path):
+    """True when the most recent user record is an interrupt marker.
+
+    Read the tail only. A long session's transcript runs to tens of megabytes and
+    this hook sits in front of every single prompt.
+    """
+    if not transcript_path or not os.path.exists(transcript_path):
+        return False
+    try:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as fh:
+            if size > TAIL_BYTES:
+                fh.seek(size - TAIL_BYTES)
+                fh.readline()  # discard the partial line the seek landed inside
+            tail = fh.read().decode("utf-8", errors="replace")
+    except Exception:
+        return False
+
+    last_user = None
+    for line in tail.splitlines():
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        msg = r.get("message") or {}
+        if msg.get("role") == "user" or r.get("type") == "user":
+            last_user = json.dumps(msg.get("content"))[:4000]
+    return bool(last_user and "Request interrupted" in last_user)
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+    except Exception:
+        return
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        payload = {}
+
+    session_id = str(payload.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or "")
+    # REJECT a malformed id, never scrub it. Stripping the bad characters out of
+    # "../../SESSTEST" yields "SESSTEST", a real and DIFFERENT session, so the hook
+    # would have quietly served another conversation's queue into this one. Caught
+    # by the self-test's traversal case, which was written expecting silence.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id or ""):
+        session_id = ""
+    prompt = str(payload.get("prompt") or "")
+
+    tasks = open_tasks(session_id)
+    interrupted = was_interrupted(payload.get("transcript_path"))
+
+    if not tasks and not interrupted:
+        # Nothing pending. Say nothing: a reminder that fires on every prompt is
+        # noise, and noise is what taught the reader to skip the whole block.
+        return
+
+    cancelling = bool(CANCEL.search(prompt))
+
+    lines = ["CARRYOVER QUEUE: this prompt is ADDITIVE, not a replacement."]
+
+    if interrupted:
+        lines.append(
+            "  The previous turn was INTERRUPTED. Whatever was in flight was not "
+            "finished and was never reported. Name it in this reply, then either "
+            "finish it or put it under YOUR MOVE with the blocker."
+        )
+
+    if tasks:
+        lines.append("  Still open from earlier in this session:")
+        for status, subject in tasks[:12]:
+            lines.append("    - [%s] %s" % (status, subject))
+        if len(tasks) > 12:
+            lines.append("    - (+%d more in the task list)" % (len(tasks) - 12))
+
+    if cancelling:
+        lines.append(
+            "  This prompt reads as a CANCEL. Name which of the items above it "
+            "drops, drop exactly those, and keep the rest. Do not clear the whole "
+            "queue on an ambiguous cancel."
+        )
+    else:
+        lines.append(
+            "  Handle the new prompt first if it is urgent, then clear the queue in "
+            "the same session. No item may vanish silently. An item that cannot be "
+            "done is refused out loud against its name, never dropped quietly."
+        )
+
+    lines.append(
+        "  Before the first tool call: TaskCreate every imperative in the new prompt, "
+        "so the next interrupt inherits it instead of losing it."
+    )
+
+    sys.stdout.write("\n".join(lines) + "\n")
+
+
+def _self_test():
+    """Written 2026-08-17, because there was none.
+
+    `~/.claude/CLAUDE.md` asserted "Self-test 13/13 including the silence arm" for this
+    hook. No such test existed anywhere on disk, and `--self-test` was not a recognised
+    flag: it fell through to main(), read an empty stdin, found nothing pending and exited
+    0 silently. A run that cannot fail printed a clean exit, which is exactly the shape
+    the negative-control rule in CLAUDE.md exists to catch. The comment on TASK_ROOT
+    above even says it is overridable "so the self-test can actually reach a fixture",
+    so the test was designed and then never landed.
+    """
+    import subprocess
+    import tempfile
+
+    here = os.path.abspath(__file__)
+    root = tempfile.mkdtemp(prefix="carryover-selftest-")
+    sid = "selftest-session"
+    tdir = os.path.join(root, "tasks", sid)
+    os.makedirs(tdir, exist_ok=True)
+
+    def task(name, status, subject):
+        with open(os.path.join(tdir, name), "w", encoding="utf-8") as fh:
+            json.dump({"status": status, "subject": subject}, fh)
+
+    def transcript(name, records):
+        p = os.path.join(root, name)
+        with open(p, "w", encoding="utf-8") as fh:
+            for r in records:
+                fh.write(json.dumps(r) + "\n")
+        return p
+
+    def user(content):
+        return {"type": "user", "message": {"role": "user", "content": content}}
+
+    def run(prompt="go", session=sid, transcript_path=None, task_root=None):
+        env = dict(os.environ)
+        env["CARRYOVER_TASK_ROOT"] = task_root or os.path.join(root, "tasks")
+        payload = {"session_id": session, "prompt": prompt}
+        if transcript_path:
+            payload["transcript_path"] = transcript_path
+        r = subprocess.run([sys.executable, here], input=json.dumps(payload),
+                           capture_output=True, text=True, env=env)
+        return r.returncode, r.stdout
+
+    interrupted = transcript("int.jsonl", [user("earlier"), user("[Request interrupted by user]")])
+    clean = transcript("clean.jsonl", [user("[Request interrupted by user]"), user("later prompt")])
+    empty = transcript("empty.jsonl", [user("nothing special")])
+
+    cases = []
+
+    def check(name, cond):
+        cases.append((name, bool(cond)))
+
+    # 1. silence. No open task, no interrupt: the hook must say nothing at all.
+    rc, out = run(transcript_path=empty)
+    check("silence when nothing is pending", rc == 0 and out.strip() == "")
+
+    # 2. an open task surfaces, by subject, not by a reminder to go look.
+    task("a.json", "pending", "ship the reference audit")
+    rc, out = run(transcript_path=empty)
+    check("open task named in the injection", "ship the reference audit" in out)
+
+    # 3. a closed task does not surface.
+    task("b.json", "completed", "already finished thing")
+    rc, out = run(transcript_path=empty)
+    check("completed task stays out", "already finished thing" not in out)
+
+    # 4. the interrupt marker alone fires, with no open tasks.
+    os.remove(os.path.join(tdir, "a.json"))
+    os.remove(os.path.join(tdir, "b.json"))
+    rc, out = run(transcript_path=interrupted)
+    check("interrupt alone fires", "INTERRUPTED" in out)
+
+    # 5. an interrupt that is NOT the last user record must not fire. This is the arm
+    #    that keeps the hook from shouting on every prompt for the rest of a session.
+    rc, out = run(transcript_path=clean)
+    check("stale interrupt does not fire", out.strip() == "")
+
+    # 6. a cancel phrase gets the scoped-cancel clause.
+    task("c.json", "in_progress", "half-done migration")
+    rc, out = run(prompt="drop that", transcript_path=empty)
+    check("cancel prompt gets the CANCEL clause", "reads as a CANCEL" in out)
+
+    # 7. and a cancel still NAMES the items, because "drop it" has to point somewhere.
+    check("cancel still names the open item", "half-done migration" in out)
+
+    # 8. an ordinary prompt gets the do-not-vanish clause instead.
+    rc, out = run(prompt="now do the next thing", transcript_path=empty)
+    check("ordinary prompt gets the vanish clause", "may vanish silently" in out)
+
+    # 9. the TaskCreate instruction rides along whenever the hook fires.
+    check("TaskCreate line present when firing", "TaskCreate" in out)
+
+    # 10. more than 12 open items truncate with a count, rather than flooding context.
+    for i in range(15):
+        task("bulk%02d.json" % i, "pending", "bulk item %d" % i)
+    rc, out = run(transcript_path=empty)
+    check("over 12 items truncates with a count", "more in the task list" in out)
+
+    # 11. a session id that tries to escape the task dir is refused.
+    rc, out = run(session="../../etc", transcript_path=empty)
+    check("path-traversal session id reads no tasks", "bulk item" not in out)
+
+    # 12. a malformed task file is skipped without taking the good ones down with it.
+    with open(os.path.join(tdir, "broken.json"), "w", encoding="utf-8") as fh:
+        fh.write("{not json")
+    rc, out = run(transcript_path=empty)
+    check("malformed task file skipped, others survive", rc == 0 and "bulk item 0" in out)
+
+    # 13. a transcript path that does not exist is not a crash.
+    rc, out = run(transcript_path=os.path.join(root, "no-such-file.jsonl"))
+    check("missing transcript path does not crash", rc == 0)
+
+    bad = [n for n, ok in cases if not ok]
+    for n, ok in cases:
+        print("  %s %s" % ("ok  " if ok else "FAIL", n))
+    print("carryover-queue self-test: %s (%d/%d)"
+          % ("PASS" if not bad else "FAIL", len(cases) - len(bad), len(cases)))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        sys.exit(_self_test())
+    try:
+        main()
+    except Exception:
+        pass  # fail open, always
+    sys.exit(0)

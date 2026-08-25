@@ -56,46 +56,37 @@ REQUIRED = [
 # interesting as a deletion. Anything not on this list gets surfaced for review.
 # Adding a hook on purpose means adding it here on purpose.
 KNOWN = {
-    "context-save.sh", "stop-justify.sh", "prettier.sh", "cl2-observe.sh",
+    "context-save.sh", "stop-justify.sh",
     "lane-guard.sh", "risk-checkpoint.sh", "agent-budget.sh",
     "session-collide.sh", "context-restore.sh", "wiring-verify.sh",
-    "burn-context.sh", "state-verify-inject.sh", "auto-push.sh",
-    "guild-session.sh",
+    "burn-context.sh", "state-verify-inject.sh",
     "dash-gate.sh",   # PreToolUse Write|Edit: blocks em dashes in written output
-    # Added <phone>, same reason as the eleven below: it landed committed
+    # Added 2026-08-17, same reason as the eleven below: it landed committed
     # (9210a9d) from a concurrent session and printed REVIEW at every start.
-    "telegram-queue-inject.sh",  # SessionStart: surfaces inbound bot messages
-    "SOT-DIGEST.md",  # `cat ...SOT-DIGEST.md` is a read, not an executable
-    # Added <phone>. All eleven below were registered, on disk, deliberate,
+    # Added 2026-08-14. All eleven below were registered, on disk, deliberate,
     # and printed REVIEW at EVERY session start because this list had not been
     # updated since they landed. Twelve lines of false alarm per session is not
     # a check: the one line that would ever mean something is buried in eleven
     # that never do, so the reader learns to skip the whole block.
-    "guild-claim-owner.py",   # PostToolUse: records commit ownership
     "websearch-cache.sh",     # PostToolUse WebSearch|WebFetch
     "fetch-guard.sh",         # PreToolUse Write|Edit
     "grep-portability.sh",    # PreToolUse Bash
     "curl-router.sh",         # PreToolUse Bash
-    "linkedin-path-guard.sh", # PreToolUse browser MCPs
     "ls-before-write.sh",     # PreToolUse Write
     "click-credit-guard.sh",  # PreToolUse mcp__.*__click_.*
     "websearch-router.sh",    # PreToolUse WebSearch|WebFetch
-    "pxpipe-repatch.sh",      # SessionStart: re-applies pxpipe patches after npm i
-    "sot-people-refresh.sh",  # SessionEnd
     "closeout-preflight.sh",  # UserPromptSubmit: injects the DONE/YOUR MOVE contract.
                               # Twelfth of the same class as the eleven above: real,
                               # deliberate, and printing REVIEW every session because
                               # nobody added it here when it landed.
-    # Added <phone>. Thirteenth through fifteenth of that same class. The first
+    # Added 2026-08-16. Thirteenth through fifteenth of that same class. The first
     # two were printing REVIEW at every session start for days before anyone read
     # the line. The pattern is now unambiguous: this list goes stale by DEFAULT,
     # because landing a hook and registering it here are two separate acts and only
     # the first one is load-bearing at the moment you do it. A guard whose false
     # alarms outnumber its true ones trains the reader to skip it, which is the
     # same end state as having no guard at all.
-    "linkedin-browser-ban.sh",  # PreToolUse Bash: refuses to launch the LinkedIn lane
     "pipestatus-guard.sh",   # PreToolUse Bash: exit code lost to a pipe
-    "a venture-outbound-gate.py", # PreToolUse whatsapp/linkedin MCP sends
     "carryover-queue.py",       # UserPromptSubmit: injects unfinished work after an
                                 # interrupt, so a new prompt adds to the queue instead
                                 # of silently replacing what was in flight.
@@ -103,22 +94,23 @@ KNOWN = {
                                 # prompt. Covers the hole carryover-queue.py cannot see,
                                 # a single multi-part prompt where only part one gets
                                 # answered: no interrupt marker, no open task, nothing
-                                # fires. Added <phone> on the owner's instruction.
-    "source-router.py",         # UserPromptSubmit: names the SOURCES matching this prompt
+                                # fires. Added 2026-08-20 on the owner's instruction.
                                 # (gdoc, per-tab SOT page, memory, capability map) as paths
                                 # and commands rather than a reminder to go look. Added
-                                # <phone> after measuring that only 37% of sessions
+                                # 2026-08-20 after measuring that only 37% of sessions
                                 # touched any SOT layer at all. Silent by default: it fires
                                 # on ~10% of human turns, which is the point.
-    # Added <phone>. Sixteenth through eighteenth of the same class, and the
+    # Added 2026-08-24. Sixteenth through eighteenth of the same class, and the
     # last three that were printing REVIEW at every session start. All three are
     # committed, deliberate and load-bearing:
-    "outbound-copy-gate.py",  # PreToolUse whatsapp/linkedin/mail: copy-lint sees
                               # every message before a real person does (795c9ab).
     "probe-dedupe.sh",        # PreToolUse Bash: warns on the 2nd and 3rd look at a
                               # subject already probed, blocks the 4th (8c6922b).
-    "a venture-ops-pull.sh",    # SessionStart: pulls the shared another venture-ops repo
                               # before a second agent starts work on it (1da63de).
+    # Completed from the manifest at build time: every hook
+    # this repo ships is known to the checker that verifies it.
+    "closeout-shape.py",
+    "session-identity.sh",
 }
 
 try:
@@ -194,7 +186,7 @@ for event, groups in hooks.items():
             # .py and .js belong here as much as .sh: a hook is whatever the
             # harness executes. Accepting only .sh/.md made every python hook
             # permanently UNRECOGNISED, so guild-claim-owner.py could never be
-            # blessed no matter what the KNOWN list said. Fixed <phone>.
+            # blessed no matter what the KNOWN list said. Fixed 2026-08-14.
             for t in cmd.split():
                 t = t.strip('"\'')
                 if t.endswith((".sh", ".md", ".py", ".js", ".ps1")):
@@ -249,7 +241,7 @@ if problems:
     print("!! Dated copies: %s" % backup_dir)
     print("!! " + "=" * 66)
 else:
-    # MERGED <phone>. This used to be its own line, and the three checks that
+    # MERGED 2026-08-24. This used to be its own line, and the three checks that
     # follow in bash each printed their own healthy line beside it: four lines of
     # "nothing is wrong" every session start. They are now one. Silence is NOT an
     # option here for the reason in the header (a verifier that says nothing on
@@ -261,25 +253,8 @@ for r in review:
     print("wiring-verify: REVIEW: " + r)
 PY
 
-# --- pxpipe byte-witness ----------------------------------------------------------
-# The pxpipe patches live in BUILD OUTPUT (dist/node.js). `npm i -g pxpipe-proxy`
-# overwrites it and silently reverts all four. Health checks cannot see this: a
-# reverted bundle is a perfectly healthy bundle, it just stops saving anything.
-# Report, never block. `status` mode exits 0 on every finding, and the pipe makes
-# the exit status sed's regardless, so a stale witness cannot stop a session.
-if [ -x "$HOME/.claude/tools/pxpipe-witness.sh" ]; then
-  pxout="$("$HOME/.claude/tools/pxpipe-witness.sh" status 2>&1)"
-  # A healthy witness contributes three words to the shared line. Anything else
-  # keeps its own full line, because the detail is the whole value of a finding.
-  if printf '%s' "$pxout" | grep -q 'pxpipe-witness: OK'; then
-    ok_frags="$ok_frags · pxpipe $(printf '%s' "$pxout" | sed -n 's/.*OK (\([0-9]*\) patches.*/\1/p') patches"
-  else
-    printf '%s\n' "$pxout" | sed 's/^pxpipe-witness: /wiring-verify: pxpipe-witness: /'
-  fi
-fi
-
 # --- hook regex compile check -----------------------------------------------------
-# WIRED <phone>. hook-regex-check.py was written <phone> to catch the exact
+# WIRED 2026-08-14. hook-regex-check.py was written 2026-07-24 to catch the exact
 # failure it was born from: stop-justify.sh S2d used `[?]{0,400}` against BSD grep,
 # which refuses the interval and returns "no match", so the gate was silently OFF
 # while looking armed. The checker then sat with ZERO callers and ZERO transcript
@@ -291,7 +266,7 @@ if [ -f "$HOME/.claude/tools/hook-regex-check.py" ]; then
 fi
 
 # --- rule-surface pointer check ---------------------------------------------------
-# WIRED <phone>. Resolves every path, skill, agent and memory name cited in the
+# WIRED 2026-08-18. Resolves every path, skill, agent and memory name cited in the
 # ALWAYS-LOADED rule surface (CLAUDE.md, rules/**, MEMORY.md, cold-index.md) against
 # the disk. Born from three pointers that each cost a wasted turn before anyone
 # noticed: `~/CLAUDE-CODEX-HANDOFF.md` (moved under .claude/reference),
@@ -307,7 +282,7 @@ fi
 
 # claims-audit: how many numbers in the hooks and rules cannot be re-derived.
 # ONE LINE, always, never the list. Three cited figures were wrong in the week of
-# <phone> ("7855 close-outs", "24% repeat probes", "913 glob failures") and all
+# 2026-08-23 ("7855 close-outs", "24% repeat probes", "913 glob failures") and all
 # three were live-tree slices written down as totals. A standing count keeps the
 # debt visible; `claims-audit` with no argument prints the offenders.
 if [ -x "$HOME/.claude/bin/claims-audit" ]; then
@@ -324,7 +299,7 @@ fi
 # It cannot see a guard that fires correctly and still wastes a call, which is
 # what probe-dedupe did on the day it shipped: 28 of that day's 111 failed Bash
 # calls. The 25% threshold is the measured baseline plus headroom, not taste:
-# `guard-verdict` over the live tree on <phone> read 1,215 blocks at 19%
+# `guard-verdict` over the live tree on 2026-08-24 read 1,215 blocks at 19%
 # idle, and risk-checkpoint's arm-then-retry handshake is idle BY DESIGN, so it
 # alone accounts for most of that. Re-derive with `guard-verdict --count`.
 # Above the threshold, something is charging per call instead of per decision,
@@ -350,7 +325,7 @@ fi
 # --- surface breadcrumbs that nothing else reads -----------------------------------
 # Two pipelines here wrote their output where no reader existed. sot-people-refresh.sh
 # writes a LOUD failure file on every broken session end and nothing ever looked at it,
-# so it rotted silently from <phone>. cl2-distill.sh distils 122MB of observations
+# so it rotted silently from 2026-08-24. cl2-distill.sh distils 122MB of observations
 # into a daily friction report whose only reference in the whole tree is the script that
 # writes it. Producing a file is not value until something consumes it, which is the
 # standing rule these two were quietly breaking. Both lines below are signal-gated and
@@ -364,20 +339,6 @@ _fr="$HOME/.claude/homunculus/staging/friction-$(date +%Y-%m-%d).md"
 if [ -f "$_fr" ]; then
   _top="$(sed -n 's/^- (\([0-9]*\)x) `\([^`]*\)`.*/\1x \2/p' "$_fr" | head -1)"
   [ -n "$_top" ] && printf 'wiring-verify: top friction today %s (see %s)\n' "$_top" "${_fr#$HOME/}"
-fi
-
-# --- is the telegram listener alive, or only quiet? --------------------------------
-# Its log holds about 32 lines across three days and records ONLY errors and restarts,
-# so silence is the healthy case and the log's mtime says nothing about liveness. That
-# ambiguity already produced a wrong diagnosis: the listener was called wedged when it
-# was fine. The heartbeat is touched on every successful poll, roughly once a minute at
-# POLL_SECONDS=50, so a beat older than 10 minutes is a real stall rather than a lull.
-_hb="$HOME/.claude/state/telegram-listener.heartbeat"
-if [ -f "$_hb" ]; then
-  _age=$(( $(date +%s) - $(stat -f %m "$_hb" 2>/dev/null || date +%s) ))
-  [ "$_age" -gt 600 ] && printf 'wiring-verify: telegram listener has not polled for %dm\n' "$((_age/60))"
-elif launchctl list 2>/dev/null | grep -q telegram-listener; then
-  printf 'wiring-verify: telegram listener is loaded but has never written a heartbeat\n'
 fi
 
 # --- did any scheduled job fail? --------------------------------------------------

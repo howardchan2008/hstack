@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # prompt-items.py: UserPromptSubmit. Re-injects the ITEMS of the PREVIOUS prompt.
 #
-# The failure this fixes, the owner <phone>, verbatim: "u keep neglecting these items,
+# The failure this fixes, the owner 2026-08-20, verbatim: "u keep neglecting these items,
 # this is smt that a hook requires configuration for, since u ignore all my previous
 # prompts when i put a new one". Same day, earlier: "omfg, u ignored all the other parts
 # of my instruction" after a four-source instruction (Evolution, Gmail, Drive, transcripts)
@@ -12,7 +12,7 @@
 # mode is neither. He sends ONE prompt carrying four imperatives, the model answers the
 # first, and there is no interrupt and no task file, so nothing fires and the other three
 # vanish silently. The hole is exactly where the complaint lives. TaskCreate is also not
-# always available (the tool disconnected mid-session on <phone>), so signal A can be
+# always available (the tool disconnected mid-session on 2026-08-20), so signal A can be
 # structurally empty for a whole session.
 #
 # WHAT THIS DOES. Splits every incoming prompt into imperative items, persists them, and
@@ -52,13 +52,13 @@ ASKS = re.compile(
     re.I,
 )
 
-# A CORRECTION is an item, and until <phone> none of them were. Measured against the
+# A CORRECTION is an item, and until 2026-08-24 none of them were. Measured against the
 # real nine-item prompt of that morning ("remove If you would rather we closed your
 # application ... no one has been interviewed ... by the progress i meant ..."), ASKS
 # alone found 4 of 9. The five it dropped were every clause that corrects a wrong belief
 # rather than ordering new work, which is the half that costs most when it vanishes:
 # the model keeps acting on the belief the owner just told it was wrong. ~/CLAUDE.md has
-# said "a correction is an item" since <phone>; the splitter never implemented it.
+# said "a correction is an item" since 2026-08-11; the splitter never implemented it.
 CORRECTS = re.compile(
     r"(\b(no one|nobody|nothing|never|none of)\b|"
     r"\b(isn'?t|aren'?t|wasn'?t|weren'?t|don'?t|dont|do not|doesn'?t|didn'?t|"
@@ -122,7 +122,7 @@ def split_items(prompt):
         if not line or NOISE.match(line):
             continue
         # An enumeration the owner typed himself beats any guess this splitter makes.
-        # Added <phone> after watching this hook shred the one prompt it was
+        # Added 2026-08-24 after watching this hook shred the one prompt it was
         # built from: it carried "1 remove the line. 2 nobody interviewed. ..."
         # inline, the comma rule below cut across the numbers, and three garbage
         # fragments came back with two real items lost. When a line holds three or
@@ -214,10 +214,9 @@ if __name__ == "__main__":
         STORE = root
 
         # 1. A real multi-part the owner prompt must yield several distinct items.
-        p = ("approach all original transcripts and msgs u hv evolution api access to "
-             "whatsapp and gcp token for gdrive and gmail api and my msgs to claude\n"
-             "use the whatsapp evolution api to review all my other chats, create profiles "
-             "for all the new ones, sync with gdoc SOT, no code necessary")
+        p = ("read the failing test and tell me why it hangs\n"
+     "then fix the timeout and push it\n"
+     "also the readme still says twelve hooks, that is wrong")
         got = split_items(p)
         if len(got) < 3:
             fails.append(f"multi-part prompt split into only {len(got)} items: {got}")
@@ -236,7 +235,7 @@ if __name__ == "__main__":
         if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", "../../other-session"):
             fails.append("traversal session id was accepted")
 
-        # 5. A CORRECTION is an item. This is the real <phone> prompt, and the
+        # 5. A CORRECTION is an item. This is the real 2026-08-24 prompt, and the
         #    version of this splitter that only looked for asks found 4 of the 9 things
         #    the owner listed back. Every one it dropped was a corrected belief.
         nine = ("remove If you would rather we closed your application, say so and I "

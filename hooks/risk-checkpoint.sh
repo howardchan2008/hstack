@@ -27,7 +27,7 @@ import sys, json, os, re, time
 
 # OFF SWITCH. Operator escape hatch, documented above: touch /tmp/risk-checkpoint-off.
 #
-# HARNESS SEAM (<phone>). risk-checkpoint-payload-test.sh has to prove this
+# HARNESS SEAM (2026-08-13). risk-checkpoint-payload-test.sh has to prove this
 # switch survives a payload that never parses, so it must flip a real one. It
 # flipped the REAL path, which disarms this guard for every process on the box
 # and not just for the test holding it. Inside one pre-commit run the serial lane
@@ -35,7 +35,7 @@ import sys, json, os, re, time
 # and the path is global: a second session committing at the same moment (routine
 # in ~/.claude, which several sessions share and commit to concurrently) opens the
 # window under everyone else's feet.
-# Observed <phone>: risk-checkpoint-test.sh reported mv-out-hook exp=BLOCK
+# Observed 2026-08-13: risk-checkpoint-test.sh reported mv-out-hook exp=BLOCK
 # got=ALLOW once inside the gate, then passed 25/25 standalone and across three
 # clean gate runs. The flaky FAIL is the mild half. The real cost is that every
 # guarded op in every live session is waved through, unlogged, for the width of
@@ -51,7 +51,7 @@ if _off_env and os.path.basename(_off_env) == "risk-checkpoint-off":
     _off = _off_env
 if os.path.exists(_off):
     sys.exit(0)
-# FAIL CLOSED (<phone>). This was `except Exception: sys.exit(0)`, so ANY
+# FAIL CLOSED (2026-07-28). This was `except Exception: sys.exit(0)`, so ANY
 # payload the parser choked on silently disarmed every rule in the guard, with
 # nothing logged. The one input a bug most easily corrupts was also the one that
 # turned the guard off. A guard that cannot read its input does not know whether
@@ -89,10 +89,10 @@ except Exception as _e:
 # Bash       -> scan COMMAND TEXT (regex rules) + TOKENIZED WRITE TARGETS.
 # Edit/Write -> scan TARGET PATH ONLY, never file content.
 #
-# <phone>: widened the matcher to Edit/Write, which had been rewriting any
+# 2026-07-26: widened the matcher to Edit/Write, which had been rewriting any
 # script in ~/.claude/hooks with no checkpoint and no audit line.
 #
-# <phone> (later, this file): the Bash side had the SAME hole from the other
+# 2026-07-26 (later, this file): the Bash side had the SAME hole from the other
 # direction. The tool surface was guarded; the shell surface was not. cp, mv,
 # tee, install, rsync, sed -i and plain `>` redirects into ~/.claude/hooks all
 # passed, and settings.json's permissions block explicitly allows Bash(cp:*),
@@ -151,7 +151,7 @@ elif TOOL not in WRITE_TOOLS:
 # ---------------------------------------------------------------------------
 # Sentinel path. Overridable ONLY so the test harness can use a private one.
 #
-# WHY (<phone>): the suite drives this hook for real, against the real
+# WHY (2026-07-27): the suite drives this hook for real, against the real
 # sentinel. So a run would (a) fail spuriously whenever a bypass happened to be
 # armed, since the probe `mv <hook> /tmp/` is indistinguishable from the
 # operator's own, and (b) CONSUME that live bypass on the way past. Both
@@ -174,7 +174,7 @@ elif TOOL not in WRITE_TOOLS:
 # this hook directly (the harness) can set it, and every use is audited with
 # the path it used.
 BP_NAME = "risk-checkpoint-bypass"
-# PER-SESSION SENTINEL (<phone>). It was ONE global /tmp file shared by every
+# PER-SESSION SENTINEL (2026-07-28). It was ONE global /tmp file shared by every
 # concurrent session, so session A armed a scoped bypass and session B's guarded
 # op consumed it first. Observed with 5 sessions live in ~/.claude: three arms in
 # a row were eaten by another session editing a DIFFERENT file, and the audit log
@@ -190,7 +190,7 @@ if _bp_env:
     _b = os.path.basename(_bp_env)
     BP = _bp_env if (_b == BP_NAME or _b.startswith(BP_NAME + ".")) else ""
 LOG = os.path.expanduser("~/.claude/logs/risk-checkpoint-bypass.log")
-# SENTINEL TTL (<phone>). Consumption is deliberately tied to SUPPRESSION: a
+# SENTINEL TTL (2026-07-30). Consumption is deliberately tied to SUPPRESSION: a
 # sentinel is spent only when it actually waves a hit through (below). That is
 # the right rule for the arm->re-run flow, but it leaves an arm that suppresses
 # NOTHING never spent at all, so the grant stays live for the rest of the
@@ -204,7 +204,7 @@ LOG = os.path.expanduser("~/.claude/logs/risk-checkpoint-bypass.log")
 # still driving that decision, it is residue from one that went another way.
 # Stale sentinels are removed on sight and audited, never quietly honoured:
 # expiry is a thing that happened TO a grant and has to be visible as one.
-# <phone>: ASYMMETRIC, and the asymmetry is the point. Was one symmetric
+# 2026-08-07: ASYMMETRIC, and the asymmetry is the point. Was one symmetric
 # BP_TTL=90 used for both directions, which conflates two unrelated risks.
 #
 # PAST 90 -> 300, from the audit log, not from taste. Of 612 real bypass
@@ -235,12 +235,12 @@ BP_TTL = BP_TTL_PAST
 # Records absolute offsets so quoted spans can be blanked in place, keeping
 # every other offset valid.
 # ---------------------------------------------------------------------------
-# NEWLINE IS AN OPERATOR, not whitespace. <phone>: it was whitespace, so
+# NEWLINE IS AN OPERATOR, not whitespace. 2026-07-27: it was whitespace, so
 # `cd ~/.claude/hooks || exit 1` + newline + `cp /tmp/x rc.sh` parsed as ONE
 # trailing segment whose verb was `exit`, and no target was ever extracted.
 # Fail-open on exactly the multi-line shape most real commands take. Caught by
 # the install of this file passing unblocked with the sentinel unspent.
-# FIFTH and SIXTH instances of the destination steal, <phone>.
+# FIFTH and SIXTH instances of the destination steal, 2026-08-04.
 #
 # GROUPING. `(` `)` `{` `}` were not operators, so `( cp src GUARDED )`
 # tokenized with `(` glued to the verb: the segment verb became `(cp`, the
@@ -327,7 +327,7 @@ def tokenize(text):
 # ---------------------------------------------------------------------------
 # Normalize step 1: drop heredoc bodies that are provably inert DATA.
 #
-# WHY (<phone>): the gate matched raw command text, so a command that merely
+# WHY (2026-07-23): the gate matched raw command text, so a command that merely
 # MENTIONED a risk op was indistinguishable from one that performed it. Writing
 # a test fixture containing "systemctl" or "git push --force" tripped it.
 #
@@ -339,7 +339,7 @@ def tokenize(text):
 # a gap here is a false positive (fail-safe), never a bypass (fail-open). This
 # is why interpreters are absent: `python3 <<'PY'` executes its body.
 # ---------------------------------------------------------------------------
-# <phone>: verb-only receiver detection was itself a mention-vs-perform bug.
+# 2026-07-27: verb-only receiver detection was itself a mention-vs-perform bug.
 # `git commit -F - <<'MSG'` is a pure data sink (git cannot execute a commit
 # message), but "git" is not in DATA_SINKS, so the body stayed scanned and this
 # hook blocked the very commit that introduced it, on prose describing the rules.
@@ -388,7 +388,7 @@ def strip_inert_heredocs(text):
 # --- segment / verb structure ----------------------------------------------
 CTRL = {"||", "&&", ";", ";;", "&", "|", "|&", "\n", "(", ")", "{", "}"}
 PIPE = {"|", "|&"}
-# The trailing &? is load-bearing (<phone>). The tokenizer emits `2>&1` as
+# The trailing &? is load-bearing (2026-07-28). The tokenizer emits `2>&1` as
 # ONE operator `2>&` plus the word `1`. Without &? this pattern did not match
 # `2>&`, so seg_parts never consumed the following word, `1` stayed in words,
 # and cp/install/rsync/scp/ln (LAST_ARG_VERBS, destination = plain[-1]) took
@@ -399,7 +399,7 @@ PIPE = {"|", "|&"}
 # missing source file stopped the write. Plain `cp a b` blocked because there
 # was no trailing word to steal the destination slot.
 REDIR_T = re.compile(r"^(&?>>?\|?|\d*>>?[&|]?)$")
-# Input redirects are the same bug in the other direction (found <phone> by
+# Input redirects are the same bug in the other direction (found 2026-08-04 by
 # probing every operator shape, not by accident this time). REDIR_T covers `>`
 # only, so `0<&3`, `3<&0` and `<<<x` left their trailing word in `words` and
 # LAST_ARG_VERBS took the fd number / herestring body as the destination:
@@ -420,7 +420,7 @@ REDIR_T = re.compile(r"^(&?>>?\|?|\d*>>?[&|]?)$")
 # two can be diffed by eye. Matches `<` `n<` `<&` `<<` `<<-` `<<<` `<>`.
 REDIR_IN_T = re.compile(r"^\d*(<<<|<<-|<<|<&|<>|<)$")
 
-# FOURTH instance of the destination steal, found <phone> by probing shapes
+# FOURTH instance of the destination steal, found 2026-08-04 by probing shapes
 # the property test CANNOT reach by construction. `{v}>file` is bash/zsh fd-
 # variable syntax: the shell allocates a descriptor and assigns it to $v. The
 # tokenizer sees `{v}` as an ordinary WORD (it is not in OP_RE and never can be,
@@ -470,7 +470,7 @@ def seg_parts(seg):
                     # fd duplication (`2>&1`, `>&2`, `2>&-`): operator ends in
                     # `&` and the target is a descriptor, not a path. Consume it
                     # so it cannot be stolen as a LAST_ARG_VERBS destination
-                    # (the <phone> bypass above), but do NOT record it as a
+                    # (the 2026-07-28 bypass above), but do NOT record it as a
                     # write sink: doing so resolved `1` against cwd and blocked
                     # every `2>&1` command run from inside a guarded tree.
                     # `&>file` keeps its trailing `>` and is still a real write.
@@ -501,7 +501,7 @@ def verb_of(words):
 # ---------------------------------------------------------------------------
 # Normalize step 2: blank quoted spans that are inert DATA arguments.
 #
-# WHY (<phone>): the same MENTION-vs-PERFORM confusion survived outside
+# WHY (2026-07-27): the same MENTION-vs-PERFORM confusion survived outside
 # heredocs. `grep -n 'git push --force' hooks/x.sh` and feeding a test payload
 # to this very hook both blocked, on text that no shell would ever execute.
 #
@@ -641,7 +641,7 @@ def classify(p):
         return R_HOOK
     return None
 
-# <phone>: classify() answers "is this path guarded?", which misses the
+# 2026-07-27: classify() answers "is this path guarded?", which misses the
 # wholesale disarm: `mv ~/.claude /tmp/` and `rm -rf ~` carry hooks/ AND
 # settings.json out together while naming neither, so every rule above returns
 # None and the command is allowed. Found by probe after the mv fix. Same
@@ -742,7 +742,7 @@ RULES = [
     ("destructive delete", lambda c: bool(RM.search(c)) and not SAFE.search(c)),
     ("git history rewrite", lambda c: bool(re.search(r"git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f[a-z]*d|git\s+clean\s+-[a-z]*d[a-z]*f", c))),
     # The .* used to span the ENTIRE command string, so it crossed ; && || and
-    # newlines. Measured <phone>: `git push -q origin main; pgrep -f x` was
+    # newlines. Measured 2026-08-24: `git push -q origin main; pgrep -f x` was
     # blocked as a force push, because the -f belonged to pgrep two commands
     # later. A guard that fires on an ordinary push teaches the operator to arm
     # the bypass by reflex, which is worse than not having the guard at all.
@@ -765,7 +765,7 @@ RULES = [
     # find's OWN action flags. The tokenizer models redirects and sed/cp/mv, and the
     # text rules above want the mutator and the path in one statement, so
     # `find ~/.claude/hooks -name '*.sh' -exec sed -i '' s/a/b/ {} +` reached disk with
-    # no block, no bypass and no audit line. Found <phone> while fixing the
+    # no block, no bypass and no audit line. Found 2026-08-17 while fixing the
     # guarded-var false positive, and confirmed a PRE-EXISTING gap by replaying the same
     # command against the pre-patch copy of this file, which also allowed it.
     # The exec'd verb must itself mutate: `-exec grep` and `-exec wc` stay allowed,
@@ -780,7 +780,7 @@ RULES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Interpreters doing their own file I/O. <phone>, found by probe after the
+# Interpreters doing their own file I/O. 2026-07-27, found by probe after the
 # container fix. write_targets answers "which WORD is the target of a write
 # VERB", and `python3 -c "open('~/.claude/hooks/x','w').write(...)"` has no
 # write verb and no write operator: the verb is `python3`, `-c` is dropped as a
@@ -820,7 +820,7 @@ INTERP_INLINE = re.compile(r"""(?x)
 # ALLOW costs the guard -- and that asymmetry was used to justify matching bare
 # words, which turned out to cost the guard anyway, by a longer route.
 #
-# <phone>, measured. Three read-only diagnostics of stop-justify.sh blocked,
+# 2026-08-03, measured. Three read-only diagnostics of stop-justify.sh blocked,
 # and the third is the one that matters: `python3 /tmp/s2diag.py` names no hook
 # at all, and was blocked on the contents of the script it was handed. The
 # vocabulary, not the distance, was wrong:
@@ -852,13 +852,13 @@ INTERP_INLINE = re.compile(r"""(?x)
 # counts only when a .claude path follows it, so `python3 -c "...read()" >
 # /tmp/out` stays allowed.
 MUTATE = re.compile(r"""(?xi)
-    # WRITE, QUALIFIED (<phone>). Was a bare \bwrite\w* under (?xi), so the
+    # WRITE, QUALIFIED (2026-08-07). Was a bare \bwrite\w* under (?xi), so the
     # WORD write matched as DATA and blocked work that writes nothing. Measured,
     # not supposed: `python3 - <<PY ... print(open(h).read().count("write")) PY`
     # blocked, a command whose only file operation is .read(). The region rule
     # could not save it, and that is the whole point: `h` IS a guarded var and
     # the literal DOES sit in its statement, so the targeting was right and the
-    # VOCABULARY was wrong. Same finding as the <phone> pass that qualified
+    # VOCABULARY was wrong. Same finding as the 2026-08-03 pass that qualified
     # replace/append/copy/remove by demanding a filesystem RECEIVER; write was
     # left bare and is the same ambiguity, only worse, because it is an ordinary
     # English noun AND this repo's own hooks print it ("a SHELL WRITE was
@@ -898,7 +898,7 @@ GUARDED_TEXT = re.compile(
 
 # ---------------------------------------------------------------------------
 # PROXIMITY. A mutation token must sit near the guarded path it supposedly
-# mutates. <phone>, the owner: "fix false positive".
+# mutates. 2026-08-01, the owner: "fix false positive".
 #
 # Both scans below used to ask two UNRELATED questions of the whole text --
 # "is there a mutation word anywhere" and "is there a guarded path anywhere" --
@@ -993,7 +993,7 @@ def _mutating_guarded(text):
             for v, vr in gvars.items():
                 # (?<![-\w]) not \b: a guarded var named `d` or `p` otherwise matches
                 # the FLAG in `tr -d ' '`, `find -type d`, `head -n`. Measured
-                # <phone> by delta debugging a read-only inventory command that
+                # 2026-08-17 by delta debugging a read-only inventory command that
                 # this rule blocked. Three innocent ingredients had to line up: the
                 # English word "exec" inside a printf label (MUTATE `exec\w*`), a
                 # one-letter python var assigned from a guarded path
@@ -1020,7 +1020,7 @@ def interp_hits(text):
 
 # ---------------------------------------------------------------------------
 # Interpreter given a SCRIPT FILE. Closes KNOWN GAP #1, which was pinned as an
-# expectation by 3b4432b and flipped deliberately on <phone> at the owner's
+# expectation by 3b4432b and flipped deliberately on 2026-07-29 at the owner's
 # request (the test said a flip "wants review, not a silent green": this is it).
 #
 # The gap was not theoretical. It was walked into by this very agent earlier the
@@ -1133,7 +1133,7 @@ def script_file_hits(segs, cwd0):
     return out
 
 # ---------------------------------------------------------------------------
-# SUBSTITUTION RECURSION (<phone>). Structural analysis walked only the TOP
+# SUBSTITUTION RECURSION (2026-08-04). Structural analysis walked only the TOP
 # level of a command. Text rules (RM, force push, destructive SQL, ...) scan the
 # whole string and so survived substitution, but write_targets and
 # script_file_hits never looked inside `$( )`, backticks, `<( )` or `>( )`:
@@ -1310,7 +1310,7 @@ if _bp_live:
         raw = open(BP, encoding="utf-8").read().strip()
     except Exception:
         raw = ""
-    # <phone>: an EMPTY sentinel used to mean BLANKET, which made the unsafe
+    # 2026-07-28: an EMPTY sentinel used to mean BLANKET, which made the unsafe
     # option the cheapest to type: `touch <sentinel>` versus writing out a rule
     # name for a scoped one. The log shows exactly that failure. Of 16 blanket
     # uses, 15 were the identical single-rule command
@@ -1324,7 +1324,7 @@ if _bp_live:
     # sentinel is REJECTED rather than upgraded: it is ambiguous (a truncated
     # write, a failed heredoc, a stray touch), and resolving ambiguity toward
     # "skip every guard" is the wrong direction.
-    # <phone>: entries are `rule[@path]`. Session scoping fixed WHO can spend
+    # 2026-07-29: entries are `rule[@path]`. Session scoping fixed WHO can spend
     # a sentinel but not WHAT it authorises: "hook script write" armed to edit
     # stop-justify.sh equally authorised a write to risk-checkpoint.sh itself,
     # i.e. to this guard. A hit that came FROM a path is now suppressed only
@@ -1377,13 +1377,13 @@ if _bp_live:
     else:
         remaining = [h for h in hits if not _suppressed(h)]
         if len(remaining) < len(hits):
-            # SINGLE-USE, EXCEPT FOR A PURELY PATH-SCOPED GRANT (<phone>).
+            # SINGLE-USE, EXCEPT FOR A PURELY PATH-SCOPED GRANT (2026-08-24).
             # Measured across the live tree: 728 risk-checkpoint blocks, and of
             # the 298 whose target could be parsed, 100 were a REPEAT block on a
             # path already armed in the same session. Editing one hook four
             # times cost four blocks, four arms and four retries, and this guard
             # was the largest single source of failed tool calls on the box.
-            # the owner, <phone>: "u need to prevent the guards from actually
+            # the owner, 2026-08-24: "u need to prevent the guards from actually
             # making things worse".
             #
             # What single-use was protecting, from the TTL comment above: an arm
@@ -1449,13 +1449,13 @@ _REDO = ("re-run the command below, unchanged" if TOOL == "Bash"
 
 # A force-push rewrites history for every other session sharing the remote, but
 # this message used to explain how to arm the sentinel without ever saying WHO
-# ELSE IS LIVE, so the call got made blind. <phone>: 21 commits were dropped
+# ELSE IS LIVE, so the call got made blind. 2026-08-03: 21 commits were dropped
 # off a shared remote and the roster was consulted only afterwards. It came back
 # clean, which is precisely why nothing caught it -- a blind call that happens to
 # win is indistinguishable from a checked one until the day it loses.
 #
 # session-collide.sh ALWAYS prints. Empty output therefore means the tool is
-# BROKEN, never "nobody else is here": before --owner existed (<phone>) it
+# BROKEN, never "nobody else is here": before --owner existed (2026-07-28) it
 # silently exited 0 and manufactured false negatives. So silence is surfaced as
 # loudly as a collision. Failing open into a quiet all-clear would rebuild the
 # exact bug this block exists to prevent.
@@ -1475,7 +1475,7 @@ if "force push" in hits:
         _err = "session-collide.sh not found at " + _sc
     else:
         try:
-            # 30s, not 10s. Measured <phone>: --owner is 14.5s COLD (it finds
+            # 30s, not 10s. Measured 2026-08-03: --owner is 14.5s COLD (it finds
             # over transcripts) and instant warm, since it caches on COLLIDE_TTL
             # (session-collide.sh, default 60 but env-overridable, so do NOT read
             # the warm case as guaranteed: 30s must clear the COLD path alone,

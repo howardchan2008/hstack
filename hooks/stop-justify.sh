@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
-# PROVENANCE, added <phone>. the 1,451-transcript refusal figures were measured 2026-08 against the then-live transcript tree.
+# PROVENANCE, added 2026-08-23. the 1,451-transcript refusal figures were measured 2026-08 against the then-live transcript tree.
 # That tree is NOT the corpus any more: transcript-archive moved 3,638 of the
-# 3,857 transcripts to ~/Archive/claude-transcripts on <phone>, so the live
+# 3,857 transcripts to ~/Archive/claude-transcripts on 2026-08-18, so the live
 # tree is about 6% of sessions. These numbers are HISTORICAL and are not
 # reproducible as stated. Re-derive across BOTH trees before citing them; see
 # ~/.claude/bin/claims-audit and hooks/lib/probe-dedupe-backtest.py for the shape.
 # stop-justify.sh: Stop hook. Refuses a stop that leaves visible work on the floor.
 #
-# the owner, <phone>: "u need to justify it every time u stop, why did u stop at
+# the owner, 2026-07-23: "u need to justify it every time u stop, why did u stop at
 # this point, why cant u continue further". The trigger was landing a working fix
 # to cc_invoice_lib.py and moving on with it uncommitted.
 #
@@ -22,10 +22,10 @@
 # That is the justification. It is logged, so bad ones are auditable.
 #
 # NOT a valid reason: waiting on permission to push. the owner removed that gate
-# (CLAUDE.md, <phone>: "no need permissions from me to push"). The old example
+# (CLAUDE.md, 2026-07-27: "no need permissions from me to push"). The old example
 # here literally read "needs the owner's call on push", which taught every session
 # reading this header to file exactly the excuse the rule forbids. Corrected
-# <phone>. Routine push is not an owner decision; ship it.
+# 2026-08-12. Routine push is not an owner decision; ship it.
 #
 # LOOP SAFETY: three independent guards, because a Stop hook that always blocks
 # wedges the session and the only way out is killing the process:
@@ -38,7 +38,7 @@
 #      BLOCK_DECAY seconds of not blocking.
 #   3. kill switch: touch /tmp/stop-justify-disabled
 #
-# <phone>, second pass: guard 2 used to be a LIFETIME per-session counter.
+# 2026-07-23, second pass: guard 2 used to be a LIFETIME per-session counter.
 # the owner: "the stop hook didnt work, u keep stopping". Session 475710d4 hit the
 # cap of 2 at 15:37 and then ran unguarded until 18:56, every stop for three
 # hours exited at the cap check with no log line and no block. A cap that only
@@ -55,7 +55,7 @@ set -uo pipefail
 [ -f /tmp/stop-justify-disabled ] && exit 0
 
 MAX_BLOCKS=3            # consecutive blocks, not lifetime
-# <phone>: 2 -> 3. the owner: "u rlly need to make the stop hook stricter so u
+# 2026-07-30: 2 -> 3. the owner: "u rlly need to make the stop hook stricter so u
 # dont stop so easily". Guard 1 (stop_hook_active) already hands every block a
 # free pass on the very next stop, so a cap of 2 meant a determined stop reached
 # open water after ONE nag. Three still terminates a runaway (the cap is
@@ -122,7 +122,7 @@ fi
 # Reset the counter and allow the stop. Every allowed stop rearms the guard,
 # that is what makes this a loop breaker rather than a one-shot fuse.
 #
-# <phone>: allow_stop used to exit silently, so ONLY blocks left a trace. That
+# 2026-07-24: allow_stop used to exit silently, so ONLY blocks left a trace. That
 # made the hook unauditable in the one direction that matters, a false NEGATIVE
 # (a stop that should have been blocked and was not) wrote nothing at all, so the
 # only way to find one was to already suspect it. The S2d miss fixed above sat
@@ -130,7 +130,7 @@ fi
 # ALLOW line carries the tail of the final message so a miss can be diagnosed
 # from the log instead of reconstructed from memory.
 # ---- regex helpers: a broken pattern must never fail silently ----------------
-# <phone> incident: S2d's bound was widened to {0,240}->{0,400}. /usr/bin/grep
+# 2026-07-24 incident: S2d's bound was widened to {0,240}->{0,400}. /usr/bin/grep
 # here is BSD grep 2.6.0-FreeBSD, whose RE_DUP_MAX is 255, so it did not match
 # less, it refused to compile, printed "maximum repetition exceeds 255" to
 # stderr, and exited 2. `if grep -q ...; then` treats rc=2 identically to rc=1,
@@ -185,7 +185,7 @@ FILES_FILE="$STATE_DIR/$SID.files"
 
 LAST_TEXT=""
 if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  # FLUSH RACE (<phone>). The final assistant message is not always on disk
+  # FLUSH RACE (2026-08-06). The final assistant message is not always on disk
   # when this hook reads the transcript. Observed 20:16:36 this session: the
   # close-out opened with DONE and was on disk by 12:16:36.135Z, but LAST_TEXT
   # resolved to the PREVIOUS message -- mid-task narration -- so the shape gate
@@ -209,11 +209,11 @@ def note(p):
         dirs.append(d)
 
 # `cd` deliberately does NOT appear here. It used to confer ownership as a
-# "medium signal". Measured <phone> across 91 transcripts, filtered to real
+# "medium signal". Measured 2026-08-06 across 91 transcripts, filtered to real
 # git worktrees: 31 directories were claimed by `cd` alone with no write, and
 # 19 of those were dirty at measurement time, i.e. 19 live sources of a block
 # for work the session never touched. Against 38 write-backed claims. Session
-# be14c63a `cd`-ed into code/whatsapp-mcp 26 times without writing a byte and
+# be14c63a `cd`-ed into a repo 26 times without writing a byte and
 # would have been told it owned the dirt in that repo.
 #
 # The cost is real and accepted: a session that mutates only through the shell
@@ -256,7 +256,7 @@ try:
                 # a read is not ownership: investigating a complaint must not
                 # manufacture the ownership that complaint asserts.
                 #
-                # <phone> CORRECTION, kept because the wrong version shipped
+                # 2026-08-06 CORRECTION, kept because the wrong version shipped
                 # in 5db6e65. That commit justified this gate by claiming
                 # session be14c63a was BN(O) paperwork with no code in it, which
                 # merely Read manifest.json and got locked onto automation-hub.
@@ -305,7 +305,7 @@ fi
 # Uses rx, not hit: a match here means "justified -> allow the stop", so a broken
 # regex must not read as a match. rx returns 2 on error, `if` treats that as
 # false, and we fall through to the signal gates. Conservative in this direction.
-# NAMED-NOT-DONE PARK (<phone>, the owner: "configure the stop hook such that
+# NAMED-NOT-DONE PARK (2026-08-03, the owner: "configure the stop hook such that
 # [the three items I named] are completed").
 #
 # Until now STOPPING: exited HERE, before SIGNALS was computed, so the gate at
@@ -313,7 +313,7 @@ fi
 # stops" -- could never fire on a justified stop. Net effect: "I noticed Y and
 # left it named" was unconditionally sufficient, including for a one-line fix in
 # a file this session already had open. The block text below has said since
-# <phone> that such an edit is typing, not a follow-up. It was advice printed
+# 2026-07-30 that such an edit is typing, not a follow-up. It was advice printed
 # on OTHER blocks; this makes it load-bearing.
 #
 # Scope is deliberately narrow, because the unbounded version wedges: it fires
@@ -365,9 +365,9 @@ if [ -n "${NND_PARK:-}" ]; then
         NOT-TYPING: <owner-decision|destructive|expensive|not-mine>: <item>"
 fi
 
-# ---- close-out shape (CLAUDE.md 'Session close-out format is fixed', added <phone>, the owner directive) --
-# The close-out format was written <phone> and then obeyed in 0 of 49
-# sessions measured <phone>. the owner: "i dont think u ever obey my
+# ---- close-out shape (CLAUDE.md 'Session close-out format is fixed', added 2026-08-06, the owner directive) --
+# The close-out format was written 2026-08-04 and then obeyed in 0 of 49
+# sessions measured 2026-08-06. the owner: "i dont think u ever obey my
 # instructions". Text in CLAUDE.md is not enforcement. This is.
 #
 # Carried as a SIGNAL rather than an immediate block, for the same reason given
@@ -391,13 +391,13 @@ ${SHAPE_OUT}
   fi
 fi
 
-# WHICH REPOS TO CHECK (rewritten <phone>, the owner: "fix the stop hook").
+# WHICH REPOS TO CHECK (rewritten 2026-07-27, the owner: "fix the stop hook").
 #
 # Until now this was exactly one repo, resolved from the session's cwd. That is
 # wrong whenever the session edits anywhere else, which on this box is the
 # normal case: cwd sits in ~/repos/a venture while the F1-F6 work happens in six
 # ~/repos/a venture/site-wt-* worktrees. The failure was not subtle in either
-# direction on <phone>:
+# direction on 2026-07-27:
 #   FALSE NEGATIVE: F4 messaging sat with 6 modified files and, later, a commit
 #                   that had never been pushed. Every stop logged "no-signals".
 #   FALSE POSITIVE: it blocked twice on 4 dirty a venture files belonging to
@@ -429,7 +429,7 @@ REPO_ROOTS="$(
   done | awk 'NF && !seen[$0]++' | head -12
 )"
 
-# ATTRIBUTION FILTER. <phone>, the owner: "the stop hook and the session collide
+# ATTRIBUTION FILTER. 2026-07-28, the owner: "the stop hook and the session collide
 # hook shd be resolving this in session" -- said after S1 blocked THIS session on
 # hooks/session-collide.sh while another live session was mid-edit in it.
 #
@@ -447,7 +447,7 @@ REPO_ROOTS="$(
 # work left on the floor, so attribution may only ever REMOVE a path from the
 # list when it positively names a different session. Silence never subtracts.
 #
-# COST, AND WHY THERE IS NO LONGER A CAP (<phone>). This used to call
+# COST, AND WHY THERE IS NO LONGER A CAP (2026-08-06). This used to call
 # --owner once PER PATH and cap the count at 6, because each call cost seconds.
 # It cost seconds for a bug reason, not a fundamental one: --owner could not
 # tell "rg found nothing" from "rg is not installed", so every unattributed
@@ -462,7 +462,7 @@ REPO_ROOTS="$(
 # the exact signal this gate exists for. Above it the check was SKIPPED, and a
 # skipped check is not a passed check: a venture routinely sat at 77 dirty
 # paths, so ownership was never checked there at all. Deleting the cap is what
-# makes the <phone> miss detectable in the trees where it actually happens.
+# makes the 2026-07-28 miss detectable in the trees where it actually happens.
 COLLIDE="$HOME/.claude/hooks/session-collide.sh"
 # _OWNER_MAP holds "<relpath>\t<sid8>" lines, one per attributed path, possibly
 # several per path. _OWNER_MAP_OK distinguishes "asked and got an answer" from
@@ -509,7 +509,7 @@ _owner_of() {
   local rel="$1" sids
   [ "$_OWNER_MAP_OK" = 1 ] && [ -f "$_OWNER_MAP" ] || { echo mine; return; }
   sids="$(awk -F'\t' -v r="$rel" '$1 == r { print $2 }' "$_OWNER_MAP" | sort -u)"
-  # NO RECORDED OWNER IS NOT "MINE". Fixed <phone>, the owner: the reprompt "is
+  # NO RECORDED OWNER IS NOT "MINE". Fixed 2026-08-23, the owner: the reprompt "is
   # firing too commonly even when no code or session collide is present".
   #
   # This line used to return `mine`, so any dirty file that no session was
@@ -522,7 +522,7 @@ _owner_of() {
   # .claude" that were mine. Both correctly answered that the files were not
   # theirs, which is a round trip each, spent on my mess.
   #
-  # `unknown` is now its own bucket: still listed, never blocking. The <phone>
+  # `unknown` is now its own bucket: still listed, never blocking. The 2026-07-28
   # miss argues the other way, but that was about SILENCE, a tool exiting 0 with
   # no output so foreign edits got swept into a commit. Naming the files loudly
   # while declining to accuse keeps the information and drops the false charge.
@@ -531,7 +531,7 @@ _owner_of() {
   echo "other:$(printf '%s\n' "$sids" | head -1)"
 }
 
-# CWD-SCOPED REPO SKIP (<phone>, the owner: "since we're doing a venture work,
+# CWD-SCOPED REPO SKIP (2026-08-04, the owner: "since we're doing a venture work,
 # u need to adjust the stop hook ... to make them stop [surfacing a venture],
 # permanently ... patch the upstream issues").
 # A repo listed SKIP_UNLESS_CWD in the ignore conf is reported ONLY while the
@@ -576,16 +576,16 @@ skip_unless_cwd() {
 while IFS= read -r REPO_ROOT; do
   [ -n "$REPO_ROOT" ] || continue
   skip_unless_cwd "$REPO_ROOT" && continue
-  # <phone>: `head -10` used to run BEFORE the count, and N was computed from
+  # 2026-07-26: `head -10` used to run BEFORE the count, and N was computed from
   # the truncated list, so any tree with >10 dirty files reported exactly
   # "10 tracked file(s)" forever. Count the full list, truncate only for display.
-  # REFRESH THE STAT CACHE FIRST. Added <phone>, the owner: the reprompt "is
+  # REFRESH THE STAT CACHE FIRST. Added 2026-08-23, the owner: the reprompt "is
   # firing too commonly even when no code or session collide is present".
   #
   # `git status --porcelain` reports a file modified when its mtime moved, even
   # if the bytes are identical, until something refreshes the index. Two things
   # on this box rewrite files with identical content on a schedule: the
-  # pxpipe-repatch SessionStart hook re-applies all eleven patches every session,
+  # the local proxy SessionStart hook re-applies all eleven patches every session,
   # and sync-sot-gbrain.sh rewrites its exports several times a day. So a session
   # that touched nothing gets blocked and told to justify work it never did.
   # Measured in this hook's own log: 100 of 971 blocks (10%) were dirty-file
@@ -612,7 +612,7 @@ while IFS= read -r REPO_ROOT; do
   UNKNOWN=0
   UNATTRIB=0
   IGNORED=0
-  # GENERATED-ARTIFACT FILTER (<phone>, the owner: "this session is
+  # GENERATED-ARTIFACT FILTER (2026-08-04, the owner: "this session is
   # a venture, why do u keep calling another venture ... investigate and patch").
   # Pipeline output regenerated by a daily job is not session work. a venture
   # carries 75 refreshed web/data files that a cron rewrites; before this they
@@ -621,7 +621,7 @@ while IFS= read -r REPO_ROOT; do
   # ownership check below was SKIPPED entirely and the report said "ownership
   # NOT checked" every single time.
   #
-  # (b) died on <phone> when the cap was deleted; all 77 would be attributed
+  # (b) died on 2026-08-06 when the cap was deleted; all 77 would be attributed
   # now. (a) did not, and the filter still earns its keep for a reason the cap
   # was masking: no session wrote those files, a cron did, so --owner returns
   # them UNATTRIBUTED and they fail closed to "yours". That is the right default
@@ -668,7 +668,7 @@ while IFS= read -r REPO_ROOT; do
       # Could not ask: tool missing, no timeout(1), or the call failed or timed
       # out. A SKIPPED check is not a PASSED check, so subtract nothing and say
       # so. Asserting "all N are yours" here is the exact shape of the
-      # <phone> miss: another session's uncommitted edits read as this
+      # 2026-07-28 miss: another session's uncommitted edits read as this
       # agent's work on the floor and got swept into its commit.
       UNATTRIB=1
     else
@@ -712,7 +712,7 @@ done <<< "$REPO_ROOTS"
 
 # Are the unpushed commits in this repo THIS session's to push?
 #
-# WHY THIS EXISTS, <phone>. S3 counted unpushed commits with no ownership
+# WHY THIS EXISTS, 2026-08-24. S3 counted unpushed commits with no ownership
 # check at all, so it reported another session's branch as work on MY floor. I
 # then "cleared" it by pushing two branches I did not write, in two repos I was
 # never asked to touch. The owning session's own words afterwards: "Fixed forward
@@ -752,14 +752,14 @@ _commits_are_mine() {
 
 # S3: commits that exist but were never pushed.
 #
-# <phone>, the owner: "from now on, no need permissions from me to push". That
+# 2026-07-27, the owner: "from now on, no need permissions from me to push". That
 # makes pushing part of finishing in exactly the way committing already was, so
 # commits sitting ahead of a configured upstream are work left on the floor, not
 # a decision waiting on his call. Without this the hook had a hole big enough to
 # drive the whole session through: it would block on one dirty file while waving
 # through 19 finished commits that never left the machine.
 #
-# <phone>, the owner: "didnt i tell u to always push". The original "no upstream
+# 2026-07-28, the owner: "didnt i tell u to always push". The original "no upstream
 # -> stay silent" guard below was wrong, and wrong in the worst direction. It
 # conflated two situations that could not be less alike:
 #
@@ -857,7 +857,7 @@ sys.stdout.write(t)
 # silently matching against an empty string (which would disable S2 entirely).
 [ -n "$S2_TEXT" ] || S2_TEXT="$LAST_TEXT"
 
-# Ordered-list markers added <phone>. Latent hole, found while diagnosing the
+# Ordered-list markers added 2026-07-28. Latent hole, found while diagnosing the
 # S2f miss and verified separately: "- Next steps" was caught, "1. Next steps"
 # was not, though numbered lists are the more common way to write a plan. This
 # did NOT cause that miss and is not credited with it.
@@ -884,7 +884,7 @@ fi
 # expensive failure: the message reads as a thorough status report precisely
 # because the work was analysed in detail.
 #
-# <phone> miss, session 562fadc7. Final message ended with:
+# 2026-07-28 miss, session 562fadc7. Final message ended with:
 #   "1. **Step 3 is the actual remaining work, and it has not been started.**"
 #   "...noticed in passing, not investigated."
 # Logged ALLOW/no-signals. the owner: "why didnt u start and fix both
@@ -907,7 +907,7 @@ fi
 # S2c: MARKDOWN HEADING announcing leftover work: "## Next steps",
 # "## Concrete next step", "### What's left".
 #
-# <phone>: this gate missed a stop that ended with a "## Concrete next step"
+# 2026-07-25: this gate missed a stop that ended with a "## Concrete next step"
 # section followed by "Want me to build that harness?". Two independent reasons,
 # both fixed here rather than by widening S2a:
 #   1. S2a's prefix alternation allows a bullet or bold marker but not "#", so a
@@ -926,7 +926,7 @@ fi
 # hook exists for: naming the work, then handing it back as a question.
 # Requires a question mark on the same line, so describing an offer in past
 # tense ("I offered to build the harness") does not trip it.
-# <phone>: this gate MISSED a stop ending "Want me to break the seed-phrase
+# 2026-07-24: this gate MISSED a stop ending "Want me to break the seed-phrase
 # confound (match length and syntactic completeness across arms), or chase the
 # read-not-followed mechanism directly?": 136 chars between trigger and "?",
 # against a {0,120} bound. The bound was never a safety property; it was there
@@ -955,7 +955,7 @@ fi
 # S2e: DECLARATIVE hand-back: "say the word and I'll ...". Same failure mode
 # as S2d (name the work, hand it back) but phrased as a STATEMENT, so it ends in
 # a period and S2d's mandatory "?" could never match it. It sat inside S2d's
-# alternation as dead weight until <phone>, when the log showed two
+# alternation as dead weight until 2026-07-26, when the log showed two
 # consecutive ALLOW/no-signals stops that both named outstanding work:
 #   08:50:48 "...say the word and I'll start on either."
 #   08:52:07 "Say the word and I'll fix it while the research runs."
@@ -972,9 +972,9 @@ fi
 # in the one phrasing that escapes both: there is no "?" for S2d to anchor on
 # and no fixed idiom for S2e to match. Found by auditing the ALLOW/no-signals
 # stops in this log (125 of them against 284 blocks):
-#   <phone>:06:22  "...live provider state won. If you want, I"
-#   <phone>:02:15  "...no history behind it. Still think that's worth fixing, and sti"
-#   <phone>:46:07  "...and the allow-list version of the stop hook. If you want the literal"
+#   2026-07-25 09:06:22  "...live provider state won. If you want, I"
+#   2026-07-27 00:02:15  "...no history behind it. Still think that's worth fixing, and sti"
+#   2026-07-27 21:46:07  "...and the allow-list version of the stop hook. If you want the literal"
 # Each named real outstanding work and stopped on it. Each logged no-signals.
 #
 # No {0,N} bound anywhere in this gate, for the reason spelled out at S2d:
@@ -997,7 +997,7 @@ fi
 # Shared verb list for the "worth <gerund>" forms in S2g and S2h. It started as
 # the literal three verbs S2g was born with (fixing|doing|chasing), which is
 # exactly as wide as the three log lines that prompted S2g and no wider. The
-# <phone> miss was "Worth ADDING the mirror pushes": a verb nobody had
+# 2026-07-29 miss was "Worth ADDING the mirror pushes": a verb nobody had
 # thought of yet, in a gate whose whole job is catching work handed back. Naming
 # the list once means the next missing verb is a one-word fix in one place
 # instead of a divergence between two gates that drift apart silently.
@@ -1008,7 +1008,7 @@ if hit "$S2_TEXT" "(if you want|if you.d like|((it|that|this)['’]s|\b(is|are|s
 fi
 
 # S2h: DEFERRED IMPROVEMENT. Work is named, correctly diagnosed, sized, and then
-# filed as advice for a future pass instead of being done. Added <phone>,
+# filed as advice for a future pass instead of being done. Added 2026-07-29,
 # the owner: "from next time, the stop hook shd implement [these] instead of
 # waiting for the next pass".
 #
@@ -1058,7 +1058,7 @@ if hit "$S2_TEXT" "((for|in|on) (the )?next (pass|session|round|go)\b|future wor
   S2_HIT="1"
 fi
 
-# S2i: BARE LEFTOVER LIST. Added <phone>, the owner: "the stop hook shd flag both
+# S2i: BARE LEFTOVER LIST. Added 2026-07-30, the owner: "the stop hook shd flag both
 # items as smt u can do without my approval ... make the stop hook stricter so u
 # dont stop so easily".
 #
@@ -1089,13 +1089,13 @@ fi
 # the same guard", you are strictly closer to having applied it than to having
 # explained why you did not.
 #
-# The <phone> draft-lane case also shows why deferring this is not neutral: the
+# The 2026-07-30 draft-lane case also shows why deferring this is not neutral: the
 # guard as written would have dropped 28/28 draft targets, because a draft target
 # is already present in out/enr* by construction. Left as a follow-up it reads as a
 # tidy copy-paste; done in the same session it surfaces as a scoping bug that
 # silently produces zero output. Handing the sibling fix back defers the DISCOVERY,
 # not just the typing.
-# Two arms, both requiring a DEFERRAL, added <phone> after this clause blocked a
+# Two arms, both requiring a DEFERRAL, added 2026-08-17 after this clause blocked a
 # compliant close-out on the sentence "Same guard had a real gap: find -exec sed -i
 # edited every hook." That is a report of work FINISHED, and the bare noun phrase
 # could not tell it apart from work handed onward. Describing a fix in terms of the
@@ -1103,7 +1103,7 @@ fi
 # accurate reporting and pushed the next writer toward vaguer prose.
 # Arm 1: a transfer verb before the noun ("apply the same guard to run_draft.sh").
 # Arm 2: the deferral after it ("the same fix elsewhere", "belongs in", "needs to be").
-# 16-case probe incl. the two real <phone> deferrals this clause was written for:
+# 16-case probe incl. the two real 2026-07-30 deferrals this clause was written for:
 # tests/stop-justify-test.sh, cases s2j-*.
 if hit "$S2_TEXT" "(^|[^[:alpha:]])(appl|port|cop|extend|replicat|mirror|repeat|reus|us|need|require|want|deserve|belong|wire|add|giv|scope)[a-z]*[^.!?]{0,40}same +(fix|guard|change|patch|treatment|approach|edit|scoping|reasoning)"; then
   S2_HIT="1"
@@ -1112,7 +1112,7 @@ if hit "$S2_TEXT" "same +(fix|guard|change|patch|treatment|approach|edit|scoping
   S2_HIT="1"
 fi
 # No third arm for a marker BEFORE the noun ("TODO: same guard for X", "Left to
-# do: the same guard on X"). One was written <phone> and deleted the same
+# do: the same guard on X"). One was written 2026-08-17 and deleted the same
 # hour: a mutant with it removed still blocked all four of its own test cases,
 # because the S2a next-steps clause and arm 2's "the rest" already had them. It
 # would have been an arm that could never be shown to fire, which is the exact
@@ -1142,7 +1142,7 @@ fi
 # the ALLOW path keeps the information without turning someone else's branch into
 # a reason to refuse this session's stop, which is how those branches got pushed
 # in the first place. Silence was the alternative and silence is what let a
-# foreign edit get swept into a commit on <phone>.
+# foreign edit get swept into a commit on 2026-07-28.
 if [ -n "${NOTES:-}" ]; then
   printf 'stop-justify NOTE, not blocking:%s\n' "$NOTES" >&2
 fi
@@ -1150,7 +1150,7 @@ fi
 [ -z "$SIGNALS" ] && allow_stop ALLOW \
   "no-signals | tail: $(printf '%s' "$LAST_TEXT" | tr '\n' ' ' | tail -c 200)"
 
-# ---- guard 4: per-complaint lifetime cap (<phone>, derived from history) --
+# ---- guard 4: per-complaint lifetime cap (2026-08-06, derived from history) --
 # Guard 2 counts CONSECUTIVE blocks and decays on every allowed stop, so the
 # interleaved pattern block,block,allow,block,block,allow never reaches 3. The
 # log shows the consequence: 26 CAP firings against 661 blocks, while a single
@@ -1209,12 +1209,12 @@ are still worth raising before the push. Routine permission asks are not.
 A NAMED EDIT IN A FILE YOU ALREADY TOUCHED IS NOT A FOLLOW-UP. If you can write
 "X needs the same guard" or "still to scope Y", you have already done the hard
 part: you know the file, the change, and that it applies. What is left is typing.
-Deferring it also defers DISCOVERY, which is the real cost: on <phone> the
+Deferring it also defers DISCOVERY, which is the real cost: on 2026-07-30 the
 sibling fix handed back as copy-paste turned out to drop 28 of 28 targets when
 actually applied, a silent-zero-output bug that only surfaced by doing it. An
 identical fix to a sibling file, a scoping change, a config default, a guard you
 just wrote for one lane and not its twin: these are not the owner's decisions and
-never needed his approval. Since <phone> this is enforced rather than
+never needed his approval. Since 2026-08-03 this is enforced rather than
 advised: a named-not-done item that mentions a file this session edited does not
 pass on STOPPING alone. Type the fix, or classify it with a NOT-TYPING: line.
 
@@ -1243,8 +1243,8 @@ from any cwd. hooks/guild-session.sh --who <sha> resolves one commit, and
 hooks/guild-session.sh list shows who is live. All three ALWAYS print: empty
 output is never the answer, and if you get silence, treat the tool as broken
 rather than reading it as "nobody else is here". --owner was implemented
-<phone>; before that it silently exited 0 and manufactured false negatives.
-<phone> miss: a STOPPING was filed on that reasoning when the ledger said no
+2026-07-28; before that it silently exited 0 and manufactured false negatives.
+2026-07-28 miss: a STOPPING was filed on that reasoning when the ledger said no
 other session was live in the repo at all, and the changes were this same
 agent's, from 10h earlier.
 

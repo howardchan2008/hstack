@@ -3,9 +3,9 @@
 ## There is no remote worker lane on this machine
 
 This file used to open by telling every session to prefer OpenClaw workers over local
-subagents. Measured <phone>: no `openclaw` on PATH, no `~/.openclaw` or
+subagents. Measured 2026-08-14: no `openclaw` on PATH, no `~/.openclaw` or
 `~/.config/openclaw`, and no such MCP server in `~/.claude.json` (global servers are
-guild and linkedin-mcp; context7 and whatsapp were removed <phone>). The only hits inside
+guild and linkedin-mcp; context7 and whatsapp were removed 2026-08-20). The only hits inside
 `plugins/cache/everything-claude-code/` and one echo line in `bin/usage-verdict.sh`.
 So the first routing instruction in the always-loaded rules pointed at a lane that has
 never existed here. Local subagents are the only agent lane. The genuine offload lanes
@@ -28,7 +28,7 @@ Located in `~/.claude/agents/`:
 | doc-updater | Documentation | Updating docs |
 | advisor | Read-only second opinion | Commitment boundaries, architecture, 3+ file refactors |
 
-Language specialists, listed as they actually exist (checked <phone>, because the line
+Language specialists, listed as they actually exist (checked 2026-08-14, because the line
 here used to name six languages as if each had both halves, and two of them do not):
 
 | | reviewer | build-resolver |
@@ -38,7 +38,7 @@ here used to name six languages as if each had both halves, and two of them do n
 | pytorch | **no** | yes |
 
 So `pytorch-reviewer` is not a thing to dispatch; `pytorch-build-resolver` is. Rust, Java,
-Kotlin and Flutter were archived <phone> (zero source files of those languages on this
+Kotlin and Flutter were archived 2026-08-14 (zero source files of those languages on this
 machine); restore with `mv ~/.claude/agents-archive/<name>.md ~/.claude/agents/`.
 
 ## Immediate Agent Usage
@@ -70,13 +70,13 @@ PROVENANCE, and it applies to every number on this page. The 243 is a HISTORICAL
 single-audit figure, not reproducible from the current corpus. Reproduce the live counts by
 walking `message.content` in both `~/.claude/projects/**/*.jsonl` and
 `~/Archive/claude-transcripts/**/*.jsonl.gz`, tallying `tool_use` blocks by `name` and by
-`input.subagent_type`. Run on <phone> across all 3,857 transcripts that gives 0 top-level
+`input.subagent_type`. Run on 2026-08-23 across all 3,857 transcripts that gives 0 top-level
 `Explore` calls and 100 Agent dispatches with `subagent_type: Explore`, out of 495 dispatches
 total. Quote those instead; treat 243 as the anecdote it is.
 
 ## TALK TO THE OTHER SESSIONS. They are running right now and you are not alone
 
-the owner, <phone>: *"since when can u message teammates, this is a fucking useful
+the owner, 2026-08-24: *"since when can u message teammates, this is a fucking useful
 feature literally u shd use it much more from now on"*.
 
 `ListAgents` names every live session on this machine; `SendMessage({to, message})`
@@ -94,7 +94,7 @@ hold, which is a dozen calls at its own full context plus the owner's attention:
 a venture case burned 15 classifier refusals and then escalated a wrong diagnosis
 to him. It is a terrible price for "confirmed, thanks".
 
-WRITE IT ONCE BEATS TELLING EVERYONE. Amended <phone> the same day it was added,
+WRITE IT ONCE BEATS TELLING EVERYONE. Amended 2026-08-24 the same day it was added,
 the owner: *"wouldnt it be nicer just to have one sync or one single permanent change such
 that u dont hv these back and forths, anything shd be one msg one way max unless there's
 good reason to start a convo"*. He is right, and the first day of using this got it
@@ -120,7 +120,7 @@ ONE MESSAGE, ONE DIRECTION. Do not open a thread.
 - Say everything in the first message. If you find yourself sending a second one to the
   same lane in a session, the first was incomplete and that is the defect.
 - A peer mentioning a third repo is NOT a task. Scope creep arrives by message: on
-  <phone> a peer's aside about a venture pulled this session into a third repo's
+  2026-08-24 a peer's aside about a venture pulled this session into a third repo's
   compliance question it was never asked about. Note it for the owner, do not adopt it.
 - Answer a peer only when the answer CHANGES WHAT THEY DO NEXT. "It is mine, thanks"
   does not. "Do not commit that file, the owner is deciding" does.

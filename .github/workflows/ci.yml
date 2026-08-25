@@ -1,0 +1,92 @@
+name: ci
+
+# Both platforms, every push. This was developed on macOS, so BSD tooling is the
+# default assumption in the code and Ubuntu is what keeps the GNU assumptions
+# honest: stat, date, grep -P and setsid all diverge, and each of those has
+# already produced a real failure here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: suite
+        run: bash tests/run.sh
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # SC1090/SC1091: dynamic source paths are deliberate here.
+          # SC2016: single-quoted $HOME inside a settings.json command string
+          #         is the literal the harness expands, not a shell variable.
+          shellcheck --severity=warning -e SC1090,SC1091,SC2016 \
+            hooks/*.sh install.sh doctor.sh tests/run.sh
+
+  install-smoke:
+    # Proves the installer works on a machine that has never seen this repo,
+    # which is the only condition that matters and the one a developer never
+    # tests. It installs into a throwaway prefix, asserts every hook comes back
+    # armed, then uninstalls and asserts the settings file empties out again.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: install into a scratch prefix
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/claude"
+          ./install.sh --prefix "$PREFIX"
+          ./doctor.sh --prefix "$PREFIX" -v
+      - name: installing twice must not duplicate a registration
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/claude"
+          ./install.sh --prefix "$PREFIX"
+          python3 - "$PREFIX/settings.json" <<'PY'
+          import json, sys, collections
+          data = json.load(open(sys.argv[1]))
+          cmds = [h["command"]
+                  for groups in data["hooks"].values()
+                  for g in groups for h in g.get("hooks", [])]
+          dupes = [c for c, n in collections.Counter(cmds).items() if n > 1]
+          if dupes:
+              print("duplicate registrations after a second install:", dupes)
+              sys.exit(1)
+          print(f"{len(cmds)} registrations, no duplicates")
+          PY
+      - name: uninstall leaves nothing behind
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/claude"
+          ./install.sh --prefix "$PREFIX" --uninstall
+          python3 - "$PREFIX/settings.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          left = [h["command"]
+                  for groups in data.get("hooks", {}).values()
+                  for g in groups for h in g.get("hooks", [])]
+          if left:
+              print("uninstall left registrations behind:", left)
+              sys.exit(1)
+          print("settings.json is clean")
+          PY

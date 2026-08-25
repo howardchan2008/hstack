@@ -1,6 +1,6 @@
 #!/bin/bash
 # lane-guard: blocks large model fan-outs launched on the expensive lane without
-# an explicit lane decision. Born <phone>: two Claude Workflow vision-review
+# an explicit lane decision. Born 2026-07-18: two Claude Workflow vision-review
 # runs + a cache-missed resume burned ~50M subagent tokens on sheet classification
 # that codex gpt-5.4-mini does free (owner infraction, "I want it to be the last
 # time"). Mirrors risk-checkpoint.sh: mechanical gate > prose memory.
@@ -13,7 +13,7 @@
 set -u
 INPUT=$(cat)
 
-# FAIL CLOSED (<phone>). Both reads below were `2>/dev/null` feeding a bare
+# FAIL CLOSED (2026-07-28). Both reads below were `2>/dev/null` feeding a bare
 # string compare, so ANY payload python could not parse left TOOL or FANOUT
 # empty, the compare fell through, and this exited 0 having inspected nothing.
 # The gate standing between us and a repeat of the ~50M-token burn was one
@@ -58,7 +58,7 @@ PY
 FAN=${FANOUT%% *}
 # Empty FANOUT means the counter itself died, so the fan-out size is UNKNOWN,
 # not small. Unknown is treated as fan-out: the cheap error is one extra
-# approval keystroke, the expensive error is the <phone> run.
+# approval keystroke, the expensive error is the 2026-07-18 run.
 if [ "$UNREADABLE" = "1" ] || [ -z "$FANOUT" ]; then
   UNREADABLE=1
   FAN=1
@@ -84,7 +84,7 @@ MSG
 fi
 
 cat >&2 <<'MSG'
-⛔ LANE-GUARD: large Workflow fan-out blocked (CLAUDE.md engine routing + <phone> infraction).
+⛔ LANE-GUARD: large Workflow fan-out blocked (CLAUDE.md engine routing + 2026-07-18 infraction).
 Vision/sheet/classify fan-outs go to the FREE lane first:
   codex exec --ignore-user-config -c model=gpt-5.4-mini --skip-git-repo-check -i <sheet> -- "<prompt>"
   (or LOCAL qwen2.5vl for tolerant-quality labeling)

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """closeout-shape.py: enforce CLAUDE.md "Session close-out format is fixed".
 
-the owner, <phone>: the rule was written <phone> and obeyed in 0 of 49
+the owner, 2026-08-06: the rule was written 2026-08-04 and obeyed in 0 of 49
 sessions. Text in CLAUDE.md is not enforcement. This is.
 
-Cite CLAUDE.md by SECTION TITLE, never by line number. ADDED <phone>: every
+Cite CLAUDE.md by SECTION TITLE, never by line number. ADDED 2026-08-12: every
 hardcoded line citation in this file had rotted. :108 pointed at the
 persist-findings rule, :124 at a rule about reconstructing past labels, :127 at
 an environment note on WAL-mode quest.db. Each was printed at the reader as the
@@ -19,7 +19,7 @@ work summary that buries what the owner must do.
 
 Checks, all mechanical:
   R1  first non-blank line is DONE
-  R2  whole message <= 12 non-blank lines: DEMOTED to guidance <phone>, not enforced here
+  R2  whole message <= 12 non-blank lines: DEMOTED to guidance 2026-08-06, not enforced here
   R3  no ask outside YOUR MOVE ("YOUR MOVE is the only place")
   R4  no internal enforcement token in the close-out ("BANNED in the close-out")
   R5  no FYI section, and no third bucket of any name ("Two sections, never three")
@@ -76,7 +76,7 @@ BANNED = re.compile(r"\b(STOPPING|NOT-TYPING|NOT-DONE|NND_PARK)\b")
 # R6, below. Two halves, and BOTH must appear on one line for it to fire.
 # Half one: Claude announcing it will do the thing itself.
 #
-# The negative lookahead is load-bearing, found in the <phone> backtest. Without
+# The negative lookahead is load-bearing, found in the 2026-08-14 backtest. Without
 # it the top hit was "Unarchive the repo, since I will not change repo settings
 # myself", which is the exact opposite of a parked offer: it is Claude correctly
 # refusing an action and handing over a genuinely the owner-only task. Matching the
@@ -149,7 +149,7 @@ DONE_HEADING = re.compile(r"^\s*(\*\*|#+\s*)?DONE\b", re.M)
 def prior_closeout_in_turn(transcript_path):
     """True if an assistant message in THIS user turn already carried a DONE heading.
 
-    R7, added <phone> after the owner read the same close-out twice in one turn.
+    R7, added 2026-08-17 after the owner read the same close-out twice in one turn.
     A Stop hook has exactly one remedy: force another assistant message. So a
     block filed after a correct close-out has already reached him buys a line
     order and costs a duplicate. Measured shape (session 1cbd1ecb): message one
@@ -200,13 +200,13 @@ def check(text):
     lines = text.splitlines()
     first = next((ln.strip() for ln in lines if ln.strip()), "")
 
-    # R2 DEMOTED TO GUIDANCE <phone>, on measurement, not taste. Squeezing under
+    # R2 DEMOTED TO GUIDANCE 2026-08-06, on measurement, not taste. Squeezing under
     # 12 lines removed the blank lines between bullets, so 8 lines collapsed into one
     # unreadable markdown bullet. A shape rule that damages the thing it exists to
     # protect has to go. Guidance only.
     #
     # THE ORIGINAL NUMBERS HERE WERE WRONG. This comment claimed the cap "fired on
-    # 53.5% of 7855 close-outs (median 13, p90 26)". Re-measured <phone> across
+    # 53.5% of 7855 close-outs (median 13, p90 26)". Re-measured 2026-08-23 across
     # every transcript, live and archived: only 1,130 close-outs exist at all (the
     # 3,638 archived transcripts predate the format and hold 4 between them), their
     # non-blank line counts are p50 10, p90 24, max 131, and a 12-line cap would
@@ -216,7 +216,7 @@ def check(text):
     # DONE. The DEMOTION still stands, on the collapsed-bullet evidence, which is
     # about damage and not about frequency. Do not re-cite the old figures.
     #
-    # R1 RESTORED <phone>, hours after being demoted alongside R2, when the owner
+    # R1 RESTORED 2026-08-06, hours after being demoted alongside R2, when the owner
     # asked whether the format had actually persisted into other sessions. Measured
     # answer: session 0f0abafe had this rule loaded from CLAUDE.md the whole time
     # and opened with DONE in 1 of 521 assistant turns. Demoting R1 was the wrong
@@ -225,7 +225,7 @@ def check(text):
     # costs exactly one line and damages nothing. Text in CLAUDE.md had 49 sessions
     # to work and did not; this is the only thing that has ever bound.
     #
-    # R1 SPLIT <phone>, the owner: "the other sessions still double reply, patch".
+    # R1 SPLIT 2026-08-14, the owner: "the other sessions still double reply, patch".
     # A Stop hook's only remedy is another assistant message, so blocking a
     # close-out whose CONTENT is already complete buys nothing and costs the owner a
     # second near-identical message. Measured case, session 1cbd1ecb 16:07:57:
@@ -244,7 +244,7 @@ def check(text):
         )
     del lines  # R2 retired; lines was only needed to find the first one
 
-    # R5 ADDED <phone>, the owner: "FYI is also unaccpetalbe and shdnt exist".
+    # R5 ADDED 2026-08-12, the owner: "FYI is also unaccpetalbe and shdnt exist".
     # FYI was the escape hatch that made "named, not fixed" survivable. Anything
     # real enough to report is either something that was done (DONE) or something
     # the owner must act on (YOUR MOVE). A third bucket exists precisely so work can
@@ -255,12 +255,12 @@ def check(text):
     if re.search(r"^\s*(\*\*|#+\s*)?FYI\b", text, re.M):
         problems.append(
             "R5 close-out contains an FYI section (CLAUDE.md 'Two sections, never three', the owner "
-            "<phone>: it should not exist). Anything in it either got done, "
+            "2026-08-12: it should not exist). Anything in it either got done, "
             "and belongs in DONE, or needs the owner, and belongs in YOUR MOVE. "
             "If it is neither, it is not worth his attention: cut it."
         )
 
-    # R3 SCOPED <phone>. It fired on 40.3% of the corpus, but the rule is about
+    # R3 SCOPED 2026-08-06. It fired on 40.3% of the corpus, but the rule is about
     # PLACEMENT: "asks live under YOUR MOVE and nowhere else". With no YOUR MOVE
     # section at all, split_sections returns the whole message as `before`, so any
     # polite "let me know" anywhere tripped a placement rule that did not apply.
@@ -274,7 +274,7 @@ def check(text):
             problems.append("R3 ask outside YOUR MOVE (CLAUDE.md 'YOUR MOVE is the only place'): %r" % s[:70])
             break
 
-    # R6 ADDED <phone>, the owner: "u stop there only to where i asked u, naturally
+    # R6 ADDED 2026-08-14, the owner: "u stop there only to where i asked u, naturally
     # u know what the next step might be right". R3 polices WHERE an ask sits and
     # treats YOUR MOVE as a safe harbour, so the one phrasing that survives every
     # existing rule is an offer to do the work once permission arrives. That is not
@@ -390,7 +390,7 @@ def main():
     if not problems:
         return 0
 
-    # BLOCKING vs ADVISORY, split <phone>. Blocking is reserved for the rules
+    # BLOCKING vs ADVISORY, split 2026-08-14. Blocking is reserved for the rules
     # whose remedy is different CONTENT: R1 (no DONE section at all), R5 (a third
     # bucket, i.e. work mentioned but neither done nor handed over) and R6 (work
     # parked behind approval). The rest ask for the same content rearranged, and
@@ -413,7 +413,7 @@ def main():
     if not blocking:
         return 0
 
-    # R<phone>, the owner: "u just double replied". Once a close-out has been
+    # R7 2026-08-17, the owner: "u just double replied". Once a close-out has been
     # delivered in this turn, no rule here may demand another message. The block
     # is recorded so the rule stays measurable, and the turn is allowed to end.
     if prior_closeout_in_turn(transcript):

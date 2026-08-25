@@ -1,0 +1,284 @@
+# The hooks
+
+Twenty-five, grouped by the event they run on. Each entry says what it refuses,
+what it costs you when it is wrong, and the incident that produced it.
+
+Two things to read first.
+
+**How a hook refuses.** Two mechanisms are in use and both count. Exit 2 stops
+the call and hands stderr back to the model. A JSON object on stdout with
+`decision: block` or `permissionDecision: deny` does the same thing with more
+structure. A hook that only prints and exits 0 is a reporter; it never stops
+anything, and it is judged on whether the text appears at all.
+
+**Routing hooks name tools you do not have.** `curl-router.sh`,
+`websearch-router.sh` and `click-credit-guard.sh` each carry a table mapping a
+host or an API to the local command that already does that job better. The
+tables here name the author's commands. They are meant to be edited: put your
+own in, or delete the rows you have no replacement for. Every one of the three
+falls silent when the command it would recommend is not on disk, so an unedited
+install is quiet rather than wrong.
+
+---
+
+## PreToolUse
+
+Runs before the tool call. This is the only event that can stop anything.
+
+### `risk-checkpoint.sh` &nbsp;·&nbsp; `Bash|Edit|Write` &nbsp;·&nbsp; exit 2
+
+Refuses a high-blast-radius command that arrives with no rollback stated:
+loading a launchd job or cron entry, force-pushing, destructive DDL, writing
+into the harness settings file, sweeping a directory with `find -exec sed -i`.
+
+The most-fired guard in the set, and for a long time the only one with no test.
+That is how both of its bugs survived: a read-only inventory command was refused
+because a one-letter python variable collided with the `-d` in `tr -d ' '`, and
+a `find … -exec sed -i` sweep over every hook went through unblocked. A guard
+that charges you a bypass for reading a file is the guard people learn to
+bypass by reflex, so the false-positive arm matters as much as the other one.
+
+### `probe-dedupe.sh` &nbsp;·&nbsp; `Bash` &nbsp;·&nbsp; warns twice, then exit 2
+
+Refuses the fourth look at a question already answered three times this session.
+
+One audited session made 406 shell calls. 71 were the same CPU probe, 54 the
+same antivirus check, 47 the same daemon, 31 `git status`. Only 5 of the 406
+were byte-identical, so hash-based dedupe finds essentially nothing: the repeats
+are one question re-asked with different wording. The matchers work on subject,
+not on string. The first look is always free, and the second and third only
+warn, because a guard that stops the first probe is a guard that stops work.
+
+Logic lives in `hooks/lib/probe-dedupe.py`, which carries its own `--self-test`.
+
+### `curl-router.sh` &nbsp;·&nbsp; `Bash` &nbsp;·&nbsp; warns
+
+Prints the better route when a hand-rolled HTTP call goes at a host that a local
+tool already wraps, and then gets out of the way.
+
+906 of 20,579 shell calls on one machine were `curl`, and several went at hosts
+with a keyed, tested, documented command sitting one directory away. Two news
+APIs were being queried by hand on the same day the wrapper for them was
+written. This one warns rather than blocks on purpose: a hand-rolled call often
+hits an endpoint the wrapper does not cover, and refusing those would be a false
+positive on ordinary work.
+
+### `grep-portability.sh` &nbsp;·&nbsp; `Bash` &nbsp;·&nbsp; exit 2
+
+Refuses a grep PCRE flag that will silently degrade to an empty result.
+
+`timeout 60 grep -rlP '[\x{2010}-\x{2015}]' --include='*.md' .` looks like a
+careful search for unicode dashes. `timeout` execs BSD grep, which has no `-P`,
+and the command fails in a way that prints nothing. An empty result reads as a
+clean tree. A false zero is the most dangerous measurement there is, because it
+makes unfinished work look finished.
+
+### `pipestatus-guard.sh` &nbsp;·&nbsp; `Bash` &nbsp;·&nbsp; exit 2
+
+Refuses a state-changing command whose exit code is thrown away by a pipe.
+
+`git push origin main | tail -2` exits with `tail`'s status. The push can fail
+outright and the pipeline still reports success, so the session moves on
+believing the work is on the remote. Reads piped to `head` are fine and stay
+fine; the guard only cares when the left-hand side changes something.
+
+### `dash-gate.sh` &nbsp;·&nbsp; `Write|Edit` &nbsp;·&nbsp; exit 2
+
+Refuses a unicode dash written into an authored file.
+
+A house style rule that prose alone never enforced. Included less for the rule
+than for the shape: it is the smallest complete example of a guard in this repo,
+about forty lines, and the allow arm of its test is the interesting half.
+`grep -qF -- "$want"` and `pre-seed` and `ed-tech` are all legal, and the naive
+version of the rule refused all three.
+
+### `ls-before-write.sh` &nbsp;·&nbsp; `Write` &nbsp;·&nbsp; exit 2
+
+Refuses a blind write over a path that already holds finished work.
+
+`Write` replaces an existing file with no diff and no prompt. The guard refuses
+two shapes: the target already exists, and the directory carries a completion
+marker such as a `REPORT.md`. It deliberately skips scratch trees and
+directories that do not exist yet, because neither can be hiding finished work.
+
+Worth reading as a lesson about testing: the first test written for this one
+asserted what the NAME says, put its fixture in the system temp directory, and
+reported a working guard as failing open. Test what a tool does.
+
+### `fetch-guard.sh` &nbsp;·&nbsp; `Write|Edit` &nbsp;·&nbsp; warns
+
+Warns when upstream has moved the same file underneath you since you read it.
+Never blocks, by design, so the assertion in the test suite is that it stays out
+of the way.
+
+### `lane-guard.sh` &nbsp;·&nbsp; `Workflow` &nbsp;·&nbsp; exit 2
+
+Refuses a large fan-out onto the expensive lane when no lane decision has been
+stated.
+
+One run spent tens of millions of tokens doing work a free lane covers, and a
+failed cache replay re-ran 241 agents to recover 9 missing results. The rule it
+enforces: before a fan-out, name the lane, the item count and the ceiling.
+
+### `agent-budget.sh` &nbsp;·&nbsp; `Agent` &nbsp;·&nbsp; JSON deny
+
+Refuses an agent dispatch once the daily or weekly count is spent, with a
+documented bypass.
+
+Agent cost is per agent, not per message. A five-role review panel on one
+question is most of a day's budget, and the panels were being spawned by habit
+rather than by need.
+
+### `click-credit-guard.sh` &nbsp;·&nbsp; `mcp__.*__click_.*` &nbsp;·&nbsp; exit 2
+
+Refuses a metered API call when a free lane in your own stack answers the same
+question. Fails closed on an unreadable payload, so the allow arm of its test is
+the one that can rot silently.
+
+### `websearch-router.sh` &nbsp;·&nbsp; `WebSearch|WebFetch` &nbsp;·&nbsp; nudges once
+
+Names the cheaper route for this subject before the search goes out, once per
+subject, then yields.
+
+432 of 1,035 web calls in a 30-day window re-fetched a URL or a query already
+pulled inside that same window. The answer was bought twice because nothing was
+keeping it. A nudge that never clears is a block, so the test asserts both arms.
+
+---
+
+## PostToolUse
+
+### `websearch-cache.sh` &nbsp;·&nbsp; `WebSearch|WebFetch` &nbsp;·&nbsp; reporter
+
+Stores what a search or fetch returned so the next session can read it instead
+of paying for it again. This is the half that makes the router's first gate mean
+anything: without a writer, "you already fetched this" is an assertion with no
+file behind it.
+
+---
+
+## SessionStart
+
+### `wiring-verify.sh`
+
+Checks that the guards are armed rather than merely present, and surfaces any
+registered hook it does not recognise. The hooks block runs arbitrary code
+before every tool call, so an addition is as interesting as a deletion.
+
+Its roster is kept equal to the shipped set by `tests/parity.py`. That check
+exists because the roster went stale by default: landing a hook and registering
+it in the roster are two separate acts, and only the first is load-bearing at
+the moment you do it. Eighteen real hooks printed a REVIEW line at every session
+start for days before anyone read one of them. A checker whose false alarms
+outnumber its true ones trains you to skip the block, which is the same end
+state as having no checker.
+
+### `session-identity.sh`
+
+Resolves which session this is, from an explicit override, then the harness, then
+the transcript. It never guesses. An empty id is a missing roster line and
+recovers; a wrong id poisons every other session's view of who did what.
+
+### `session-collide.sh`
+
+Names who else is live in this tree before you rewrite history. Several agent
+sessions share these repositories, and a force-push can delete commits another
+live session pushed minutes ago, which exist nowhere else. That happened once.
+The check compares content, not just mtime, because ordering is the thing you
+cannot recover afterwards.
+
+### `context-restore.sh`
+
+If a fresh snapshot from the last session exists, surfaces a short "where you
+left off" so the session resumes instead of re-deriving. Silent when the
+snapshot is stale or missing. Disable with `touch /tmp/context-restore-disabled`.
+
+---
+
+## UserPromptSubmit
+
+Injection, not refusal. The lever here is what the model reads before it starts.
+
+### `prompt-items.py`
+
+Splits the prompt into numbered items and re-injects them on the next turn, so a
+three-part message cannot get its first part answered and its other two dropped.
+Carries a `--self-test`, because a splitter nobody measures is a splitter that
+quietly returns one item for everything.
+
+### `carryover-queue.py`
+
+Re-injects work that was interrupted mid-flight. A new prompt is additive by
+default: an interrupt is a push onto the queue, never a cancel. The model's
+instinct that a new instruction retires the old one is simply wrong, and this is
+the file that disagrees with it. Also carries a `--self-test`.
+
+### `closeout-preflight.sh`
+
+States the report contract before the reply is written.
+
+The Stop-event checker below detects the same failure perfectly and cannot fix
+it: a Stop hook's only lever is to force another assistant message, which costs
+a full extra turn to repair something that a sentence up front prevents. Detect
+late, prevent early.
+
+### `state-verify-inject.sh`
+
+Demands a live check before any externally visible claim about what a system
+currently is. Full text on the first triggering prompt of a session and after
+each compaction, a pointer in between.
+
+This exists because of a wrong product claim that went out in a sent email. An
+internal note that is wrong gets fixed. A claim in a sent email is permanent.
+
+### `burn-context.sh`
+
+Puts the running cost in front of the model before it decides to fan out. The
+bill is calls times context, and neither number is visible at the point of the
+decision unless something puts it there.
+
+---
+
+## Stop
+
+### `stop-justify.sh` &nbsp;·&nbsp; JSON block
+
+Refuses to end the turn with work left on the floor: a dirty tree, a branch with
+commits that exist on no remote, an item in the request that never got answered.
+
+The nastiest case it covers is invisible rather than merely forgotten. Every
+ahead-of-remote count is computed against the upstream, and that errors on a
+branch that has none, so the count never exists and the branch scans as fully
+pushed. Four commits across three branches existed on one laptop and nowhere
+else, and nothing flagged them. `git rev-list --count HEAD --not --remotes`
+needs no upstream and no network.
+
+### `closeout-shape.py` &nbsp;·&nbsp; JSON block
+
+Refuses a report that answers something other than the question that was asked:
+one that opens with method instead of the answer, that hands work back which
+the agent could have done, or that offers to do a thing instead of doing it.
+Carries a `--self-test`.
+
+### `context-save.sh`
+
+Snapshots where the work left off so the next session resumes instead of cold
+starting. Never blocks. Disable with `touch /tmp/context-save-disabled`.
+
+---
+
+## The rules directory
+
+`rules/common/` holds the always-loaded rules the guards enforce: coding style,
+testing, security, agent orchestration, browser hygiene, development workflow,
+and a file on learning from mistakes that is mostly a list of them.
+
+They are ordinary markdown and they work in any Claude Code setup. Keep the ones
+you agree with. The reason they ship alongside the hooks is the point the whole
+repo is making: the rules are the intent, and the hooks are the part that holds
+when the intent is inconvenient.
+
+---
+
+Written by Howard Chan. More on agent reliability and cost control:
+[linkedin.com/in/howardchan2008](https://www.linkedin.com/in/howardchan2008/).
