@@ -1,5 +1,7 @@
 # hstack
 
+![hstack: the config that refuses the agent](docs/card.png)
+
 Twenty-five Claude Code hooks that refuse the agent, and the incident behind
 each one.
 
