@@ -464,3 +464,33 @@ guards prove it ANSWERS the request. The four existing shape hooks could all
 pass while half the request was silently dropped; the coverage gate is the one
 that notices the drop, and it fires only on zero term overlap so it cannot cry
 wolf.
+
+## A default you can read is not the value that wins (added 2026-08-27)
+
+A pipeline had been dead for three days and the fix took three attempts, each
+one masking the next.
+
+The script resolved a path with a sensible fallback, and that fallback was
+edited to the correct location. Nothing changed, because a config file sourced
+TWENTY LINES EARLIER set the same variable, and `${VAR:-default}` never reaches
+its default when the variable is already set. The visible default was decoration;
+the authority was a file the reader had no reason to open.
+
+Repointing the config exposed the second break: a helper still held two
+hardcoded home-relative paths to databases that had moved. That file's own
+header documented fixing the *other* hardcoded paths in it, which is precisely
+why the remaining pair read as already handled.
+
+Three transferable rules:
+
+- **Trace the value, do not read the assignment.** `bash -x` showed the real
+  binding in one line after two wrong fixes reasoned from source.
+- **A fix is verified by running the thing, not by re-reading the edit.** Each
+  attempt looked correct in the diff and changed nothing observable.
+- **A file that documents fixing a class of bug is where the last one hides.**
+  The header created the impression of completeness that stopped the check.
+
+The pipeline also wrote a dated breadcrumb on every failed precondition, and
+nothing read it for three days. Producing a failure record is not detection
+until something surfaces it; a session-start check that greps for that file is
+what turned a silent rot into a visible one.

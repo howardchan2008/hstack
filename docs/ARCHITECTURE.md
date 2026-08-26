@@ -118,3 +118,33 @@ plainly because they are unintuitive:
 
 Written by Howard Chan.
 [linkedin.com/in/howardchan2008](https://www.linkedin.com/in/howardchan2008/).
+
+## What deliberately does not ship, and why
+
+Ten files in the private configuration this repo is extracted from are held
+back on purpose. Listing them matters: a future pass that "helpfully" adds them
+would either leak a name or hand readers a hook that fails on their machine,
+and both are worse than the gap.
+
+**Filename carries an identity that content-scrubbing cannot reach.** The scrub
+rewrites text, and a file whose NAME is an organisation is still named that
+after every rule has run. Two outbound guards fall here; the neutral-named
+`outbound-copy-gate.py` refuses the same class of mistake and ships instead.
+
+**Scrubs clean, scrubs into nonsense.** One is a routing table from
+organisation names to their sources. Redaction turns every row into
+"a venture / another venture" and produces a stub that reads as advice and
+names nothing. A correction that survives redaction only as a stub is dropped
+rather than shipped hollow.
+
+**Depends on infrastructure the reader does not have.** Session-coordination
+hooks needing a specific MCP server, and a notification bridge needing a bot
+token, would fail at every session start for anyone installing this repo. A
+checker whose false alarms outnumber its true ones trains the reader to ignore
+it, which is the exact failure `wiring-verify.sh` had to be rescued from after
+it reported fifteen absent files as problems on a stranger's first run.
+
+**Not a guard.** A statusline badge and a personal-data refresh pipeline are
+useful and refuse nothing. The bar in the README is that a file has refused
+something real, and padding the count against that bar makes every other entry
+less trustworthy.
