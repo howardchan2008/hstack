@@ -176,6 +176,26 @@ until it already has.
 
 ---
 
+### `written-call-guard.py` &nbsp;·&nbsp; deny
+
+Closes the hole that defeats every other guard here. All command guards match
+on command text, so writing the call into a file and running the file walks
+past all of them at once: the command becomes `python3 gen.py` and the URL is
+nowhere in it. Verified against the paid-inference guard, both outbound gates
+and the risk checkpoint. A file has to be created before it can be run, and
+every creation path except a shell heredoc goes through Write or Edit, so this
+is the layer where the content is still readable; heredocs keep the text in the
+command where the other guard sees it.
+
+It covers two families. Metered generation calls, because that class already
+cost real money twice. And RAW sends that talk straight to a send endpoint,
+skipping the lane that holds the do-not-contact list and the copy lint. The
+second one was narrowed within the hour after the operator pointed out that
+unattended outbound is authorised: refusing sends outright would have blocked
+the automation he approved, which is how a guard gets switched off rather than
+respected. Routing through the sanctioned lane passes, and so does editing the
+lane itself.
+
 ### `paid-inference-guard.sh` &nbsp;·&nbsp; deny
 
 Refuses a raw shell call to a metered generation endpoint. Born from an

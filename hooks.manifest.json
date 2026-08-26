@@ -292,6 +292,14 @@
    "runner": "bash",
    "block": "deny",
    "refuses": "a raw shell call to a metered generation endpoint, bypassing the wrapper that carries the credit check"
+  },
+  {
+   "file": "written-call-guard.py",
+   "event": "PreToolUse",
+   "matcher": "Write|Edit",
+   "runner": "python",
+   "block": "deny",
+   "refuses": "writing a metered generation call, or a raw send that skips the sanctioned lane, into a file to be run later"
   }
  ]
 }

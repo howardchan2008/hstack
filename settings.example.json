@@ -49,6 +49,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/fetch-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/written-call-guard.py"
           }
         ]
       },

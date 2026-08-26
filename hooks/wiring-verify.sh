@@ -56,6 +56,7 @@ REQUIRED = [
 # interesting as a deletion. Anything not on this list gets surfaced for review.
 # Adding a hook on purpose means adding it here on purpose.
 KNOWN = {
+    "written-call-guard.py",
     "paid-inference-guard.sh",
     "handoff-gate.py",
     "capability-claim-gate.py",

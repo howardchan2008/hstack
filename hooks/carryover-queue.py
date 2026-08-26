@@ -130,7 +130,14 @@ def main():
 
     cancelling = bool(CANCEL.search(prompt))
 
-    lines = ["CARRYOVER QUEUE: this prompt is ADDITIVE, not a replacement."]
+    lines = ["CARRYOVER QUEUE: this prompt is ADDITIVE, not a replacement.",
+             "  ORDER: the prompt you just received goes FIRST. Additive means "
+             "nothing is dropped, NOT that everything ranks equally: the newest "
+             "instruction is the most current statement of what he wants, and it "
+             "is often a correction of what you are doing right now. Answer it, "
+             "then work back through the queue below in the same reply. "
+             "(Added 2026-08-27 on his instruction: 'prioritize it but still take "
+             "all items, even when i press interrupt'.)"]
 
     if interrupted:
         lines.append(

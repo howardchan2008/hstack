@@ -33,9 +33,17 @@ except Exception: print("")' 2>/dev/null)
 # Explicit, auditable override.
 printf '%s' "$CMD" | grep -q 'PAID_INFERENCE_OK=1' && exit 0
 
-# Only shell HTTP clients. A wrapper calling these hosts from python is the
-# sanctioned path and never appears as a curl in a Bash command.
-printf '%s' "$CMD" | grep -Eqi '(^|[|;&[:space:]])(curl|wget|http|https)([[:space:]]|$)' || exit 0
+# HOLE FOUND BY AUDIT 2026-08-27: the first version required a shell HTTP client
+# as a bare word, so `python3 -c "...urlopen('https://api.openai.com/v1/images/
+# generations')..."` walked straight through with the billing URL sitting in
+# plain sight inside the quotes. The client name is not the signal. THE URL IS.
+# If a metered host and a billing verb both appear in the command text, it does
+# not matter what is going to make the request.
+#
+# What this still cannot see is a call hidden in a FILE (`python3 gen.py`).
+# That is covered at the Write layer by risk-checkpoint.sh, because a file has
+# to be created before it can be run, and every creation path except this one
+# goes through Write or Edit. A heredoc or an `echo >` keeps the text here.
 
 METERED='api\.openai\.com|generativelanguage\.googleapis\.com|aiplatform\.googleapis\.com|openai\.azure\.com|cognitiveservices\.azure\.com|api\.higgsfield\.ai|api\.elevenlabs\.io|api\.replicate\.com|api\.stability\.ai|api\.deepseek\.com|api\.x\.ai'
 printf '%s' "$CMD" | grep -Eqi "$METERED" || exit 0
