@@ -113,6 +113,7 @@ KNOWN = {
     # Completed from the manifest at build time: every hook
     # this repo ships is known to the checker that verifies it.
     "closeout-shape.py",
+    "item-coverage.py",
     "session-identity.sh",
 }
 

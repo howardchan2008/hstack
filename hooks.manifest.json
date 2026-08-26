@@ -260,6 +260,14 @@
    "runner": "bash",
    "block": "none",
    "refuses": "nothing. Records what tools were called so later claims about behaviour can be checked against a log rather than memory."
+  },
+  {
+   "file": "item-coverage.py",
+   "event": "Stop",
+   "runner": "python",
+   "block": "json",
+   "refuses": "a close-out that never mentions one of the request's items: term-overlap coverage, zero-overlap only, one refusal per turn",
+   "matcher": null
   }
  ]
 }

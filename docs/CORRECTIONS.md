@@ -425,3 +425,42 @@ the owner runs an interactive **zsh** shell (`<github-user>@Mac`). Any command b
 **warm alumni channels.** Warm messages to KIST alumni and Cambridge people convert far better than cold; route those cohorts through the warm lane
 
 the owner 2026-07-18: "warm messages to KIST graduates and ppl at Cambridge work especially well, but prev i have been doing cold to those asw." Proof case same day: Ren Fujimoto (KIST 2019, BDA -> Morgan Stanley IBD) gave a 54-minute call the owner rated "a rlly good breakthrough" (parse: ~/repos/a venture/deliverables/insights-2026-07-18-ren-fujimoto-call.md). LinkedIn itself flags "Shared education" on KIST profiles, so the warmth is visible to the recipient too.
+
+## One day, four self-inflicted lessons (added 2026-08-26)
+
+A single day of work produced four corrections worth shipping, all variants of
+one disease: reporting a proxy for the thing instead of the thing.
+
+**A saving must be measured against an alternative that could have happened.**
+An 88% saving collapsed on inspection: the median "uncompressed baseline" was
+larger than the model's context window, so the compared-against request was
+unsendable. A baseline that cannot execute is not a baseline. (docs/COST.md
+carries the full derivation.)
+
+**A causal claim needs the boundary query before it ships.** "X started when Y
+changed" dies instantly if X predates Y, and the per-day count that decides it
+takes seconds. Two individually true facts composed into an unverified timeline
+produced a confident, fluent, wrong diagnosis. The rule now lives in
+rules/common/learning-from-mistakes.md.
+
+**An absent row is a zero, not a nothing.** The same per-day table that killed
+the false story contained a genuinely missing day nobody noticed: traffic HAD
+stopped for one day, a month of context made the gap invisible, and the eye
+reads absence as continuity. Count the rows you expect, not the rows you see.
+
+**A benchmark nothing can fail measures nothing, and a checker that executes
+model output needs a deadline.** Three models tied at 7/7, then six at 5/5:
+tasks too easy to rank anything. Adding a deliberately weak negative control
+proved the tasks discriminate. Then a model returned a non-terminating loop and
+the checker ran it in-process, hanging the whole suite at 99% CPU for 54
+minutes while "is the process alive" said yes. Generated code runs in a
+subprocess with a timeout, and liveness checks must distinguish working,
+waiting, spinning, and wedged: only output growth plus cpu plus open sockets
+tells them apart.
+
+The Stop-hook counterpart of that last lesson ships here as
+`hooks/item-coverage.py`: format guards prove an answer LOOKS right, coverage
+guards prove it ANSWERS the request. The four existing shape hooks could all
+pass while half the request was silently dropped; the coverage gate is the one
+that notices the drop, and it fires only on zero term overlap so it cannot cry
+wolf.

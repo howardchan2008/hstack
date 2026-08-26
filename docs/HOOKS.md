@@ -314,6 +314,19 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `item-coverage.py` &nbsp;·&nbsp; JSON block
+
+Refuses a close-out that never mentions one of the request's items. The shape
+hooks above prove an answer LOOKS right; this one proves it COVERS the request,
+which is the difference between a well-formatted reply and a complete one. Term
+overlap rather than line counting (one line can honestly answer two items), it
+judges only items with a real fingerprint, skips pasted content, fires solely
+on ZERO overlap, and blocks at most once per turn so it cannot nag. Born from
+an operator complaint that only a small part of each prompt was getting done
+while every format check passed. Carries a `--self-test`, which caught two bugs
+in its own first draft: a wrong store schema that would have made it silently
+never fire, and a stopword list that ate the fingerprint it was looking for.
+
 ### `context-save.sh`
 
 Snapshots where the work left off so the next session resumes instead of cold

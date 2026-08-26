@@ -63,3 +63,26 @@ consequence in the reply.
 - Name an individual only when the owner has to act on that person specifically.
 - The file path is the pointer. Do not reproduce the file in the message.
 - This binds the close-out too. DONE is a list of outcomes, never a list of records.
+
+## FRAGMENTS, NOT COMPLETE DRAFTS (added 2026-08-26, the owner directive)
+
+the owner, verbatim: *"i realized why ai drafts seem like ai, this is coz its too complete, usually
+when i send i do fragments, but no this draft properly recaps opens explains then summarizes"*.
+
+The AI tell is not vocabulary. It is COMPLETENESS. A drafted message that opens, recaps context,
+explains, and then summarises is structurally an essay, and no amount of casual vocabulary hides
+that shape. Real chat messages from the owner arrive as several short sends with no connective tissue,
+no recap of what the other person just said, and no closing summary.
+
+RULES for any WhatsApp / DM / iMessage draft written for him:
+- Write it as SEPARATE SENDS, one line or two each, the way it would actually appear in the thread.
+  Never one paragraph containing the whole thought.
+- No recap of the other person's position. They know what they said.
+- No summary line at the end. The last message is just the last thing, not a conclusion.
+- Fragments and dropped subjects are correct ("gotta sleep", "coz that's my defense mechanism").
+- One idea per send. If it needs three ideas, that is three messages.
+- Email and formal correspondence are EXEMPT: those are genuinely complete documents.
+
+Measured basis: across 87,247 phone-corpus messages his median outbound is 7-11 words and he speaks
+after himself roughly half the time. Runs of short sends ARE his register; a single complete
+paragraph is not.

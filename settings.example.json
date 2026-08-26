@@ -203,6 +203,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/context-save.sh"
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/item-coverage.py"
           }
         ]
       },
