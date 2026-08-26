@@ -284,6 +284,14 @@
    "runner": "python",
    "block": "json",
    "refuses": "handing the owner a decision or an action the agent could perform itself"
+  },
+  {
+   "file": "paid-inference-guard.sh",
+   "event": "PreToolUse",
+   "matcher": "Bash",
+   "runner": "bash",
+   "block": "deny",
+   "refuses": "a raw shell call to a metered generation endpoint, bypassing the wrapper that carries the credit check"
   }
  ]
 }

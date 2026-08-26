@@ -32,6 +32,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/linkedin-browser-ban.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/paid-inference-guard.sh"
           }
         ]
       },

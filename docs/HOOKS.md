@@ -176,6 +176,23 @@ until it already has.
 
 ---
 
+### `paid-inference-guard.sh` &nbsp;·&nbsp; deny
+
+Refuses a raw shell call to a metered generation endpoint. Born from an
+incident where a credit check was built inside an image CLI, demonstrated
+refusing correctly, and then bypassed the same hour by calling the endpoint
+directly with curl to settle a factual argument. A guard inside a wrapper
+protects only the callers who use that wrapper, and the agent holds a shell.
+
+Two details are load-bearing. The billing verb is checked BEFORE the
+read-allow list, because an allow-rule matching a prefix of a billing path is
+a hole shaped exactly like the incident: `/models/` appears inside
+`:generateContent` and `/deployments/` inside `/images/generations`, and both
+walked through the first version until a negative control caught them. And
+listing, usage and management calls stay allowed, because shutting a lane down
+safely requires them. The override is an explicit environment prefix, so a
+deliberate spend stays greppable afterwards.
+
 ## PostToolUse
 
 ### `websearch-cache.sh` &nbsp;·&nbsp; `WebSearch|WebFetch` &nbsp;·&nbsp; reporter
