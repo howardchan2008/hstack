@@ -86,3 +86,24 @@ RULES for any WhatsApp / DM / iMessage draft written for him:
 Measured basis: across 87,247 phone-corpus messages his median outbound is 7-11 words and he speaks
 after himself roughly half the time. Runs of short sends ARE his register; a single complete
 paragraph is not.
+
+## ONE DOC PER SUBJECT: APPEND, NEVER SPAWN (added 2026-08-26, the owner directive)
+
+the owner, verbatim: *"u keep making new docs rather than appending them to the existing one which is
+what it shd be done"*.
+
+A running body of work has ONE canonical gdoc. Every new finding is appended to it as a new Part.
+Do NOT create a second doc because the new material feels like a different topic: that is exactly
+how twelve separate documents got created in one day on 2026-08-26, splitting a single audit across
+twelve links none of which was complete.
+
+RULES:
+- Before `to-gdrive`, check whether a canonical doc for this subject already exists. If it does,
+  append and re-push the SAME file. `to-gdrive` updates in place on a repeated title.
+- New doc ONLY when the subject is genuinely unrelated to every existing one, or when the owner asks
+  for a standalone deliverable for a named recipient.
+- Same rule for SOT tabs: prepend a correction block onto the existing person/venture tab rather
+  than creating tab N+1. The Portfolio SOT is at Google's 100-tab cap anyway.
+- Consolidating later is expensive and lossy. The canonical audit doc for the self/relationship
+  work is `~/Downloads/Personal/Founder/self-claims-verified-2026-08-22.md`
+  (doc 12QdfJrXKHmWdFvAEy1PBrHdZE2M4ktVx_bIJC5T4cjs), Parts One through Thirty-One.
