@@ -144,6 +144,36 @@ subject, then yields.
 pulled inside that same window. The answer was bought twice because nothing was
 keeping it. A nudge that never clears is a block, so the test asserts both arms.
 
+### `outbound-copy-gate.py` &nbsp;·&nbsp; `Bash|mcp__linkedin.*|mcp__whatsapp.*` &nbsp;·&nbsp; json
+
+Refuses an outbound message whose copy fails the house lint, and refuses a raw
+send that goes around the sanctioned sender.
+
+Every other guard in this repo protects a machine. This one protects a person on
+the other end, and it is the only category of mistake here that cannot be
+reverted: a bad commit is revertible, a bad message to a real contact is sent.
+The lint it enforces is not taste. Each pattern was added after a specific reply
+came back worse, so the checks are for verbless fragments, stacked clauses,
+nominalised status phrases, the negation-pivot construction, and canned meeting
+asks.
+
+The second half matters more than the lint. A send is allowed only through the
+sanctioned path, because a raw call to the messaging endpoint skips the repeat
+check, the cooldown, and the do-not-contact list at once. Those three are what
+stop the same person being messaged twice in a week.
+
+### `linkedin-path-guard.sh` &nbsp;·&nbsp; browser MCP surfaces &nbsp;·&nbsp; exit 2
+
+Refuses driving a social account through a browser surface that is not the
+sanctioned one.
+
+### `linkedin-browser-ban.sh` &nbsp;·&nbsp; `Bash` &nbsp;·&nbsp; exit 2
+
+Refuses launching an unsanctioned automation browser against a social account.
+Worth its own guard because the penalty there is losing the account rather than
+receiving an error code, so nothing in the transcript tells you it went wrong
+until it already has.
+
 ---
 
 ## PostToolUse
@@ -154,6 +184,20 @@ Stores what a search or fetch returned so the next session can read it instead
 of paying for it again. This is the half that makes the router's first gate mean
 anything: without a writer, "you already fetched this" is an assertion with no
 file behind it.
+
+### `prettier.sh` &nbsp;·&nbsp; `Write|Edit` &nbsp;·&nbsp; reporter
+
+Formats what was just written, so a diff never mixes a real change with a
+whitespace change.
+
+### `cl2-observe.sh` &nbsp;·&nbsp; `*` &nbsp;·&nbsp; reporter
+
+Records which tools were actually called. It refuses nothing, and it exists so
+that a later claim about the agent's own behaviour can be checked against a log
+instead of against its memory of the session. Several corrections in
+[CORRECTIONS.md](CORRECTIONS.md) were only provable because this file existed;
+the agent's recollection of what it had run disagreed with the record more than
+once.
 
 ---
 
@@ -252,6 +296,16 @@ branch that has none, so the count never exists and the branch scans as fully
 pushed. Four commits across three branches existed on one laptop and nowhere
 else, and nothing flagged them. `git rev-list --count HEAD --not --remotes`
 needs no upstream and no network.
+
+### `auto-push.sh` &nbsp;·&nbsp; reporter
+
+Reports every checkout left dirty or unpushed at the end of a turn.
+
+It walks sibling worktrees rather than only the directory the session started
+in, because the common failure is a session whose working directory is one
+checkout while the edits landed in another. A `git status` in the session's own
+directory comes back clean and says nothing about the six modified files one
+directory over.
 
 ### `closeout-shape.py` &nbsp;·&nbsp; JSON block
 

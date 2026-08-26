@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/pipestatus-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/linkedin-browser-ban.sh"
           }
         ]
       },
@@ -88,6 +92,33 @@
             "command": "bash $HOME/.claude/hooks/websearch-router.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash|mcp__linkedin.*|mcp__whatsapp.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/outbound-copy-gate.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__claude-in-chrome__.*|mcp__Claude_Browser__.*|mcp__chrome-devtools__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/linkedin-path-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/cl2-observe.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -97,6 +128,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/websearch-cache.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/prettier.sh"
           }
         ]
       }
@@ -163,6 +203,15 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/context-save.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/auto-push.sh"
           }
         ]
       }

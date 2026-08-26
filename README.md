@@ -2,7 +2,7 @@
 
 ![hstack: the config that refuses the agent](docs/card.png)
 
-Twenty-five Claude Code hooks that refuse the agent, and the incident behind
+Thirty-one Claude Code hooks that refuse the agent, and the incident behind
 each one.
 
 ```bash
@@ -49,14 +49,23 @@ and a report that reads as finished. `prompt-items.py`, `carryover-queue.py` and
 
 | | |
 |---|---|
-| `hooks/` | 25 hooks: 12 `PreToolUse`, 1 `PostToolUse`, 4 `SessionStart`, 5 `UserPromptSubmit`, 3 `Stop` |
+| `hooks/` | 31 hooks: 16 `PreToolUse`, 2 `PostToolUse`, 4 `SessionStart`, 5 `UserPromptSubmit`, 4 `Stop` |
 | `hooks.manifest.json` | the wiring, and the single source of truth for it |
 | `rules/common/` | the always-loaded rules the guards enforce |
 | `tests/` | a suite that fails when a guard stops refusing |
 | `install.sh` `doctor.sh` | install, register, and then prove it took |
-| `docs/` | one page per question: [hooks](docs/HOOKS.md), [install](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [writing a guard](docs/WRITING-A-GUARD.md), [testing](docs/TESTING.md), [troubleshooting](docs/TROUBLESHOOTING.md) |
+| `docs/` | one page per question: [hooks](docs/HOOKS.md), [corrections](docs/CORRECTIONS.md), [cost](docs/COST.md), [install](docs/INSTALL.md), [architecture](docs/ARCHITECTURE.md), [writing a guard](docs/WRITING-A-GUARD.md), [testing](docs/TESTING.md), [troubleshooting](docs/TROUBLESHOOTING.md) |
 
 Full per-hook reference, with the incident and the exit codes: **[docs/HOOKS.md](docs/HOOKS.md)**.
+
+**[docs/CORRECTIONS.md](docs/CORRECTIONS.md)** is the raw material: 101 corrections
+an operator actually had to make to an agent, grouped by what the failure cost.
+Most of them never became a hook, because most of them cannot be one. They are
+here because the same mistake came back when only prose was written against it.
+
+**[docs/COST.md](docs/COST.md)** is what measuring the bill produced, including the
+two measurements that were wrong and the reason a saving measured once is a
+saving you no longer know.
 
 ## The one that matters most
 

@@ -56,10 +56,10 @@ REQUIRED = [
 # interesting as a deletion. Anything not on this list gets surfaced for review.
 # Adding a hook on purpose means adding it here on purpose.
 KNOWN = {
-    "context-save.sh", "stop-justify.sh",
+    "context-save.sh", "stop-justify.sh", "prettier.sh", "cl2-observe.sh",
     "lane-guard.sh", "risk-checkpoint.sh", "agent-budget.sh",
     "session-collide.sh", "context-restore.sh", "wiring-verify.sh",
-    "burn-context.sh", "state-verify-inject.sh",
+    "burn-context.sh", "state-verify-inject.sh", "auto-push.sh",
     "dash-gate.sh",   # PreToolUse Write|Edit: blocks em dashes in written output
     # Added 2026-08-17, same reason as the eleven below: it landed committed
     # (9210a9d) from a concurrent session and printed REVIEW at every start.
@@ -72,6 +72,7 @@ KNOWN = {
     "fetch-guard.sh",         # PreToolUse Write|Edit
     "grep-portability.sh",    # PreToolUse Bash
     "curl-router.sh",         # PreToolUse Bash
+    "linkedin-path-guard.sh", # PreToolUse browser MCPs
     "ls-before-write.sh",     # PreToolUse Write
     "click-credit-guard.sh",  # PreToolUse mcp__.*__click_.*
     "websearch-router.sh",    # PreToolUse WebSearch|WebFetch
@@ -86,6 +87,7 @@ KNOWN = {
     # the first one is load-bearing at the moment you do it. A guard whose false
     # alarms outnumber its true ones trains the reader to skip it, which is the
     # same end state as having no guard at all.
+    "linkedin-browser-ban.sh",  # PreToolUse Bash: refuses to launch the LinkedIn lane
     "pipestatus-guard.sh",   # PreToolUse Bash: exit code lost to a pipe
     "carryover-queue.py",       # UserPromptSubmit: injects unfinished work after an
                                 # interrupt, so a new prompt adds to the queue instead
@@ -103,6 +105,7 @@ KNOWN = {
     # Added 2026-08-24. Sixteenth through eighteenth of the same class, and the
     # last three that were printing REVIEW at every session start. All three are
     # committed, deliberate and load-bearing:
+    "outbound-copy-gate.py",  # PreToolUse whatsapp/linkedin/mail: copy-lint sees
                               # every message before a real person does (795c9ab).
     "probe-dedupe.sh",        # PreToolUse Bash: warns on the 2nd and 3rd look at a
                               # subject already probed, blocks the 4th (8c6922b).
