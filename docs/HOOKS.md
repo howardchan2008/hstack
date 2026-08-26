@@ -314,6 +314,23 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `capability-claim-gate.py` &nbsp;·&nbsp; JSON block
+
+Refuses a close-out that declares a named capability dead, disabled or
+unavailable when nothing in the turn actually exercised it. The most-repeated
+failure in this configuration's history, and the one a prose rule could not
+stop: a credit had expired while the lane returned HTTP 200 and a real image; a
+probe reported a service disabled because it ran as an identity that cannot
+list services; a model was declared ungranted when the call had used the wrong
+region and a working caller sat in the operator's own repository; telemetry was
+called off because an environment variable was absent while the protocol default
+already pointed at the live collector. Each was shipped as fact and each was
+wrong. The gate accepts three exits: call the thing and show what it returned,
+find a working caller and read how it differs, or say plainly that it was not
+verified. Deliberately narrow, so ordinary negative findings ("the file is not
+there", "no rows matched") never trip it. Carries a `--self-test` built from
+those real cases.
+
 ### `item-coverage.py` &nbsp;·&nbsp; JSON block
 
 Refuses a close-out that never mentions one of the request's items. The shape

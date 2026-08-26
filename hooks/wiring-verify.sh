@@ -56,6 +56,8 @@ REQUIRED = [
 # interesting as a deletion. Anything not on this list gets surfaced for review.
 # Adding a hook on purpose means adding it here on purpose.
 KNOWN = {
+    "capability-claim-gate.py",
+    "item-coverage.py",
     "context-save.sh", "stop-justify.sh", "prettier.sh", "cl2-observe.sh",
     "lane-guard.sh", "risk-checkpoint.sh", "agent-budget.sh",
     "session-collide.sh", "context-restore.sh", "wiring-verify.sh",
@@ -113,7 +115,6 @@ KNOWN = {
     # Completed from the manifest at build time: every hook
     # this repo ships is known to the checker that verifies it.
     "closeout-shape.py",
-    "item-coverage.py",
     "session-identity.sh",
 }
 

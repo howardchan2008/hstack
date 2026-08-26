@@ -268,6 +268,14 @@
    "block": "json",
    "refuses": "a close-out that never mentions one of the request's items: term-overlap coverage, zero-overlap only, one refusal per turn",
    "matcher": null
+  },
+  {
+   "file": "capability-claim-gate.py",
+   "event": "Stop",
+   "matcher": null,
+   "runner": "python",
+   "block": "json",
+   "refuses": "declaring a named capability dead, disabled or unavailable when nothing in the turn actually exercised it"
   }
  ]
 }
