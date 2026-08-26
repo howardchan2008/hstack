@@ -211,6 +211,10 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/capability-claim-gate.py"
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/handoff-gate.py"
           }
         ]
       },

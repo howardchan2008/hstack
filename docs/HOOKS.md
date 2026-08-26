@@ -314,6 +314,19 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `handoff-gate.py` &nbsp;·&nbsp; JSON block
+
+Refuses a close-out that hands the operator work the agent could have done.
+Measured across every close-out in one week: 1,520 items were handed over and
+only 9% genuinely needed a human. The rest asked for a decision between two
+options the agent itself had generated, or permission for work already
+authorised, or an action with an API the agent holds. A prose directive to
+decide rather than ask had been in place for weeks and did not move the number,
+because prose describes intent while this reads the item and asks whether it was
+doable. The list of what genuinely belongs to a human is deliberately short:
+credentials, their hands, their knowledge, their money. Backtested over 938 real
+close-outs: fires on 28%, with no hit on a genuinely human item.
+
 ### `capability-claim-gate.py` &nbsp;·&nbsp; JSON block
 
 Refuses a close-out that declares a named capability dead, disabled or
