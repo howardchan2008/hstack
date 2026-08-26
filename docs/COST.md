@@ -61,25 +61,40 @@ collapses to exactly that: compare volume sent against volume that would have
 been sent, and ignore the weights entirely.
 
 Measured that way over 70,178 requests spanning a month, 36,279 of them
-compressed:
+compressed, the number appears to collapse: 85 to 88% in the first ten days,
+13 to 23% in the last ten. A fourfold regression, apparently caused by the
+reliability fixes.
 
-| era | saving |
-|---|---|
-| first ten days | 85 to 88% |
-| middle | 35 to 50% |
-| final ten days | 13 to 23% |
+**That reading is wrong, and catching it is the actual lesson on this page.**
 
-**The saving degraded by a factor of four, and the cause was the fixes.** Image
-caps were added to stop the proxy generating payloads the API rejected. They
-worked: the 400s went to zero. They also skipped 4,558 requests in the final
-period, and those skips are most of the fall. This is a real tradeoff honestly
-arrived at, and it is invisible unless the number is recomputed after each fix
-rather than quoted from the day it was first measured.
+Split the same data by whether the uncompressed request could have been sent at
+all. The context window is 1,000,000 tokens. In the first period the median
+request had an uncompressed size of 1,072,902 tokens, and **56% of requests were
+larger than the window they would have had to fit in**. In the last period, 0%
+were. So the early 88% was measured against a counterfactual that could not
+happen: without the proxy those requests were not billed differently, they were
+impossible, and the session would have truncated its history far sooner and sent
+a fraction of that content.
 
-The general rule: **a saving measured once is a saving you no longer know.**
-Recompute it after every change to the thing that produces it, and split the
-history by date rather than pooling it, because pooling hides a trend inside an
-average.
+The late figure is measured against a baseline that is real. It is also the only
+one that agrees with the single measurement here that had a genuine control arm:
+a six-day randomised holdout, 604 conversations, which put the cost-weighted
+saving at 22.1% with a 95% interval of 7.4 to 34.3%.
+
+So the saving did not fall. **The early number was never a saving.** It was a
+third instance of the same error this page opened with, and it was produced by
+someone who had just written the first two paragraphs warning about it.
+
+Two rules survive this:
+
+**A saving measured once is a saving you no longer know.** Recompute after every
+change to the thing that produces it, and split by date rather than pooling,
+because pooling hides a trend inside an average.
+
+**Before believing a saving, ask what the alternative actually was.** Not the
+arithmetic difference against a hypothetical, but the thing that would really
+have happened. A baseline that could never have been executed is not a baseline,
+and any percentage computed against one is decoration.
 
 ## Interception has a blast radius
 
