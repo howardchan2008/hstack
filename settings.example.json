@@ -193,6 +193,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/burn-context.sh"
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/owner-facts.py"
           }
         ]
       }

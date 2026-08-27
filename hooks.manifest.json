@@ -300,6 +300,14 @@
    "runner": "python",
    "block": "deny",
    "refuses": "writing a metered generation call, or a raw send that skips the sanctioned lane, into a file to be run later"
+  },
+  {
+   "file": "owner-facts.py",
+   "event": "UserPromptSubmit",
+   "matcher": null,
+   "runner": "python",
+   "block": "none",
+   "refuses": "nothing; it re-injects what the operator STATED so a later inference cannot silently contradict it"
   }
  ]
 }

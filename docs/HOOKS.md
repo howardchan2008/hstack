@@ -320,6 +320,29 @@ decision unless something puts it there.
 
 ---
 
+### `owner-facts.py`
+
+Carries forward what the operator STATED, not just what he asked for. Two hooks
+already re-inject his prompts and both carry imperatives: one extracts things to
+do, another keeps them owed. Nothing carried his assertions. So a fact he stated
+in turn 3 is gone by turn 9, and when the agent's own inference disagrees with it
+in turn 12 there is nothing left to disagree with. That is the whole mechanism
+behind "you ignore what I tell you": the inference does not beat his fact, it
+simply outlives it.
+
+Measured over three days before this shipped: he repeated himself 46 times, and
+his corrections ran between a fifth and a half of everything he wrote. A worked
+case from the same day: he stated a component had been running for weeks, six
+turns later the agent asserted it had never run and built a causal story on it,
+and one query disproved it. His statement had been correct and in the
+conversation the entire time.
+
+It does not make the operator automatically right, and that distinction is the
+point: the same day he stated something the shipped binary contradicts. The rule
+is not "obey", it is "do not contradict SILENTLY" — quote what he said, show the
+measurement, name the discrepancy. Lines he has already had to repeat once are
+marked, because a repeat is evidence the agent lost it before.
+
 ## Stop
 
 ### `stop-justify.sh` &nbsp;·&nbsp; JSON block
