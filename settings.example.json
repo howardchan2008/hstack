@@ -227,6 +227,10 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/handoff-gate.py"
+          },
+          {
+            "type": "command",
+            "command": "python $HOME/.claude/hooks/person-claim-balance.py"
           }
         ]
       },

@@ -308,6 +308,14 @@
    "runner": "python",
    "block": "none",
    "refuses": "nothing; it re-injects what the operator STATED so a later inference cannot silently contradict it"
+  },
+  {
+   "file": "person-claim-balance.py",
+   "event": "Stop",
+   "matcher": null,
+   "runner": "python",
+   "block": "json",
+   "refuses": "a one-directional reading of a person, and an absence asserted without stating the source's coverage"
   }
  ]
 }

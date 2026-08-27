@@ -404,6 +404,35 @@ verified. Deliberately narrow, so ordinary negative findings ("the file is not
 there", "no rows matched") never trip it. Carries a `--self-test` built from
 those real cases.
 
+### `person-claim-balance.py` &nbsp;·&nbsp; JSON block
+
+The worst incident in this configuration's history, and the only one whose
+subject was a person rather than a system. A session read the operator's
+relationships out of message logs and produced thirteen claims about his
+character. All thirteen were retracted. Every one was a deficit claim, every one
+died in his favour, and none died the other way. He supplied the
+counter-evidence himself, usually within one message, without the corpus in
+front of him.
+
+Random error does not produce a thirteen-nil split. A generator whose errors run
+one hundred percent in one direction is not erring, it is expressing a prior: it
+asked a bounded corpus what was MISSING and never what was PRESENT, and every
+absence turned out to be an artifact of where the source stopped.
+
+So the hook checks the balance and the coverage, not the claims. Deficit-only is
+a finding about the question, not the person. An absence needs the source's
+coverage stated, because a partial corpus answers everything and a short answer
+is indistinguishable from a true negative.
+
+Written only after a prose note failed. That note already documented four
+instances in one week, and recorded that the fourth was committed inside the
+document describing the first three. Its own sentence: "Writing the lesson down
+did not install it." Building it caught three bugs in itself, each of which
+would have let the real incident through: a credit counter that scored "you did
+NOT broker" as a positive, a case-insensitive flag that made every word match
+the capitalised-name pattern, and a zero-credit test that a single stray
+positive sentence walked past.
+
 ### `item-coverage.py` &nbsp;·&nbsp; JSON block
 
 Refuses a close-out that never mentions one of the request's items. The shape
