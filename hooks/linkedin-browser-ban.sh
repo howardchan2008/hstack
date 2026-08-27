@@ -153,7 +153,11 @@ raise SystemExit(0 if ok else 1)
   # Headless sending, whoami, bootstrap and scraping are allowed, from any copy, any session.
   # `headless:false` (JS object literal) and `headless=False` (python kwarg) are the same
   # request for a window. The first cut matched only `=` and let the node one-liner through.
-  if printf '%s' "$cmd" | grep -qiE -- '--no-?headless|headless[[:space:]]*[=:][[:space:]]*(false|0)' \
+  # 2026-08-27, the owner: "ban snapping windows". Measured the same hour, two shapes walked
+  # straight through this regex: `npx playwright test --headed` and `PWDEBUG=1 python x.py`.
+  # Playwright's --headed and PWDEBUG both force a REAL window, which is the single thing
+  # this guard exists to stop, so they belong beside --no-headless rather than one tier down.
+  if printf '%s' "$cmd" | grep -qiE -- '--no-?headless|--headed\b|PWDEBUG[[:space:]]*=[[:space:]]*[1-9]|headless[[:space:]]*[=:][[:space:]]*(false|0)' \
      && printf '%s' "$cmd" | grep -qi 'linkedin'; then
     echo BLOCK; return
   fi
@@ -161,6 +165,25 @@ raise SystemExit(0 if ok else 1)
     echo BLOCK; return
   fi
   echo ALLOW
+}
+
+# 2026-08-27, the hole that made the Bash ban bypassable. This hook was registered on
+# PreToolUse(Bash) ONLY, and it reads tool_input.command. The window flag does not have to
+# arrive as a command: `.claude.json` carries the MCP server's argv, so an Edit or Write
+# that drops --no-headless into mcpServers gets a headed browser on the NEXT session start,
+# having passed no Bash call at all. Same class as the four checkouts the header describes:
+# a ban that covers one path while another stays open.
+_cfg_verdict() {
+  # $1 = the text being written, $2 = destination path. echoes BLOCK or ALLOW.
+  # Deliberately narrow: only a flag that FORCES A WINDOW, and only where linkedin is the
+  # subject. Editing prose about the ban, or a headed flag in an unrelated project's test
+  # config, must stay allowed or this becomes the guard people switch off.
+  local text="$1" dest="${2:-}"
+  printf '%s' "$text" | grep -qiE -- '--no-?headless|--headed\b|PWDEBUG[[:space:]]*=[[:space:]]*[1-9]|headless[[:space:]]*[=:][[:space:]]*(false|0)' || { echo ALLOW; return; }
+  # The context signal is not just the literal word: this box's LinkedIn drivers are named
+  # voyager, headless_send, cdp_linkedin and li_at, and ~/.linkedin-mcp holds the profile.
+  printf '%s\n%s' "$text" "$dest" | grep -qiE 'linkedin|voyager|headless_send|li_at|li-mcp' || { echo ALLOW; return; }
+  echo BLOCK
 }
 
 if [ "$SELFTEST" = "--self-test" ]; then
@@ -176,6 +199,10 @@ if [ "$SELFTEST" = "--self-test" ]; then
     "python -c 'BrowserManager(headless=False)' # linkedin"
     "node -e 'chromium.launch({headless:false})' # linkedin"
     "env -u HTTPS_PROXY uvx mcp-server-linkedin@latest --login"
+    # 2026-08-27: measured gaps. Both opened a window and both were ALLOWED before today.
+    "npx playwright test --headed # linkedin"
+    "PWDEBUG=1 python drive.py # linkedin"
+    "uvx mcp-server-linkedin@latest --login-viewer"
   )
   must_allow=(
     "python publish.py --file draft.txt"
@@ -228,6 +255,13 @@ if [ "$SELFTEST" = "--self-test" ]; then
     "uvx mcp-server-linkedin@latest --transport stdio"
     "env -u HTTPS_PROXY uvx mcp-server-linkedin@latest"
     "$HOME/.local/bin/linkedin-scraper-mcp --transport stdio"
+    # 2026-08-27: the windowless read lane. Proved that day with visible-window counts
+    # (1 before, 1 after) across search_people, get_inbox and a 1st-degree connection
+    # search. --status is how you check the session WITHOUT opening anything, so if a
+    # future tightening ever blocks these, the self-test fails instead of the lane dying
+    # silently. That silent death is exactly how this guard cost the send lane in August.
+    "uvx mcp-server-linkedin@latest --status"
+    "npx playwright test tests/checkout.spec.ts --headed"
   )
   for c in "${must_block[@]}"; do
     [ "$(_verdict "$c")" = "BLOCK" ] || { echo "FAIL should block: $c"; fail=1; }
@@ -235,13 +269,36 @@ if [ "$SELFTEST" = "--self-test" ]; then
   for c in "${must_allow[@]}"; do
     [ "$(_verdict "$c")" = "ALLOW" ] || { echo "FAIL should allow: $c"; fail=1; }
   done
+  # Config-write direction. Same both-ways contract as the command checks above.
+  cfg_block=(
+    '{"mcpServers":{"linkedin-mcp":{"args":["mcp-server-linkedin@latest","--no-headless"]}}}|$HOME/.claude.json'
+    'args = ["mcp-server-linkedin@latest", "--transport", "stdio"]  # headless=False|/tmp/linkedin_launch.py'
+    'chromium.launch({headless: false})|$HOME/repos/claude/outreach/voyager_headed.py'
+  )
+  cfg_allow=(
+    '{"mcpServers":{"linkedin-mcp":{"args":["mcp-server-linkedin@latest","--transport","stdio"]}}}|$HOME/.claude.json'
+    'the ban refuses --no-headless and PWDEBUG=1 outright|$HOME/.claude/hooks/README.md'
+    'await chromium.launch({headless: false})|$HOME/repos/a venture/tests/visual.spec.ts'
+    # KNOWN LIMIT, asserted rather than hidden. A headed driver in a file whose path and
+    # contents name LinkedIn nowhere is NOT caught. Widening to "any headed browser" would
+    # block ordinary Playwright work in every other repo, which is how a guard earns being
+    # switched off. The MCP lane is the supported path and it is windowless by default;
+    # this rule covers the shapes that actually recur here.
+    'chromium.launch({headless: false})|$HOME/repos/claude/outreach/scratch.js'
+  )
+  for c in "${cfg_block[@]}"; do
+    [ "$(_cfg_verdict "${c%%|*}" "${c##*|}")" = "BLOCK" ] || { echo "FAIL cfg should block: ${c%%|*}"; fail=1; }
+  done
+  for c in "${cfg_allow[@]}"; do
+    [ "$(_cfg_verdict "${c%%|*}" "${c##*|}")" = "ALLOW" ] || { echo "FAIL cfg should allow: ${c%%|*}"; fail=1; }
+  done
   if [ "$fail" = 0 ]; then echo "linkedin-browser-ban self-test: PASS"; else echo "linkedin-browser-ban self-test: FAIL"; fi
   exit "$fail"
 fi
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | python3 -c '
-import json, sys
+META=$(printf '%s' "$INPUT" | python3 -c '
+import json, sys, base64
 try:
     d = json.load(sys.stdin)
 except Exception:
@@ -249,11 +306,53 @@ except Exception:
     # than the thing being guarded. Fail OPEN here: the in-repo guards are the enforcing
     # layer, this hook is the early, machine-wide net.
     print(""); raise SystemExit
-print((d.get("tool_input") or {}).get("command", ""))
+ti = d.get("tool_input") or {}
+tool = d.get("tool_name") or ""
+if tool == "Bash":
+    text = ti.get("command", "")
+else:
+    # Edit / Write / MultiEdit: the argv that starts a browser can arrive as FILE CONTENT
+    # (.claude.json mcpServers args), never passing through a shell at all.
+    parts = [ti.get("new_string", ""), ti.get("content", "")]
+    for e in (ti.get("edits") or []):
+        parts.append((e or {}).get("new_string", ""))
+    text = "\n".join(x for x in parts if x)
+dest = ti.get("file_path", "") or ""
+enc = lambda v: base64.b64encode((v or "").encode()).decode()
+print(tool + " " + enc(text) + " " + enc(dest))
 ' 2>/dev/null)
 
-[ -z "$CMD" ] && exit 0
-[ "$(_verdict "$CMD")" = "BLOCK" ] || exit 0
+[ -z "$META" ] && exit 0
+TOOL=${META%% *}
+REST=${META#* }
+TEXT=$(printf '%s' "${REST%% *}" | base64 -d 2>/dev/null)
+DEST=$(printf '%s' "${REST##* }" | base64 -d 2>/dev/null)
+
+[ -z "$TEXT" ] && exit 0
+
+if [ "$TOOL" = "Bash" ]; then
+  [ "$(_verdict "$TEXT")" = "BLOCK" ] || exit 0
+  CMD="$TEXT"
+else
+  [ "$(_cfg_verdict "$TEXT" "$DEST")" = "BLOCK" ] || exit 0
+  cat >&2 <<EOF
+BLOCKED: this write would open a LinkedIn browser WINDOW (the owner, 2026-08-27:
+"ban snapping windows").
+
+  file: ${DEST}
+  flag: $(printf '%s' "$TEXT" | grep -oiE -- '--no-?headless|--headed|PWDEBUG[[:space:]]*=[[:space:]]*[1-9]|headless[[:space:]]*[=:][[:space:]]*(false|0)' | head -1)
+
+A headed flag in a config file needs no shell command: the next session start reads
+argv straight out of the file. The Bash ban never saw it, which is why this check exists.
+
+The MCP lane is ALREADY windowless by default. Measured 2026-08-27: search_people,
+get_inbox and a 1st-degree connection search all ran with visible windows 1 before and
+1 after. Nothing needs a headed flag to read LinkedIn.
+
+If a window is genuinely wanted, remove it from this file by hand on purpose.
+EOF
+  exit 2
+fi
 
 cat >&2 <<EOF
 BLOCKED: ad-hoc LinkedIn browser drivers stay banned (the owner, 2026-08-15).

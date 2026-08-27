@@ -376,12 +376,54 @@ def _self_test():
     return 1 if fails else 0
 
 
+def _from_stdin():
+    """Stop-hook payload -> (transcript, text).
+
+    This existed as argv-only for weeks and settings.json never called it, so
+    every rule below was dead. 2026-08-27: R6 was shown to catch a real
+    close-out verbatim while the hook was wired to nothing. An unwired guard
+    is indistinguishable from no guard, and it is worse than none, because
+    its existence is cited as coverage.
+    """
+    try:
+        payload = json.load(sys.stdin)
+    except Exception:
+        return None, ""
+    transcript = payload.get("transcript_path") or ""
+    text = payload.get("last_assistant_message") or ""
+    if not text and transcript and os.path.exists(transcript):
+        try:
+            with open(transcript, encoding="utf-8", errors="ignore") as fh:
+                for ln in reversed(fh.readlines()[-400:]):
+                    try:
+                        d = json.loads(ln)
+                    except Exception:
+                        continue
+                    if d.get("type") != "assistant":
+                        continue
+                    c = (d.get("message") or {}).get("content")
+                    if isinstance(c, list):
+                        t = "".join(b.get("text", "") for b in c
+                                    if isinstance(b, dict) and b.get("type") == "text")
+                        if t.strip():
+                            text = t
+                            break
+        except Exception:
+            pass
+    return transcript, text
+
+
 def main():
     if "--self-test" in sys.argv:
         return _self_test()
-    if len(sys.argv) < 3:
+    if len(sys.argv) >= 3:
+        transcript, text = sys.argv[1], sys.argv[2]
+    elif not sys.stdin.isatty():
+        transcript, text = _from_stdin()
+    else:
         return 0
-    transcript, text = sys.argv[1], sys.argv[2]
+    if not transcript:
+        return 0
     if not text.strip():
         return 0
     if not turn_did_work(transcript):
