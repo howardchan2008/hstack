@@ -195,7 +195,43 @@ def split_sections(text):
     return text[: m.start()], text[m.start():]
 
 
-def check(text):
+# R8 ADDED 2026-08-28. the owner, across three sessions in two days: "he literally
+# provided the numbers here", "i gave u the photos still", "i corrected u on the
+# bb before". owner-facts.py already carries his ASSERTIONS forward into context,
+# and it is wired. What nothing did was CHECK THE WAY OUT: a close-out could ask
+# him for a thing he had already pasted, and no rule objected.
+#
+# Deliberately narrow. It fires on the shape that was actually measured: an ask
+# naming an identifier or a supplied artefact that is already sitting in an
+# earlier user turn. It does not try to judge asks in general.
+ASK_FOR_INFO = re.compile(
+    r"\b(tell me|say which|let me know|confirm (?:the|whether|that|it)|send me|"
+    r"share the|give me|what (?:is|are|were)|which of|do you have|please provide|"
+    r"provide the|paste the|remind me)\b", re.I)
+# SKU/part-shaped tokens: MC525, F305, part-04, BB, E7. Distinctive enough that a
+# match in an earlier user turn is real reuse rather than a common word.
+IDENT = re.compile(r"\b(?:[A-Z]{1,4}[-_]?\d{2,5}[A-Z]?|[A-Z]{2,4}(?=\s+(?:dims|dimensions|sizes)))\b")
+# Nouns for material he hands over. Paired with evidence that he actually pasted
+# something, so "tell me the sizes" only fires when sizes were in fact supplied.
+SUPPLIED = re.compile(
+    r"\b(numbers?|dimensions?|sizes?|measurements?|photos?|images?|screenshots?|"
+    r"files?|zips?|links?|the list|spreadsheet|csv)\b", re.I)
+
+
+def _looks_pasted(user_text):
+    """Did he hand over structured material, as opposed to just writing a line?"""
+    if not user_text:
+        return False
+    if re.search(r"\[\d{4}/\d{2}/\d{2},", user_text):      # WhatsApp export paste
+        return True
+    if re.search(r"```", user_text):
+        return True
+    if len(re.findall(r"\d+\s*[x×*]\s*\d+", user_text)) >= 2:  # a size table
+        return True
+    return sum(1 for ln in user_text.splitlines() if ln.strip()) >= 8
+
+
+def check(text, supplied=""):
     problems = []
     lines = text.splitlines()
     first = next((ln.strip() for ln in lines if ln.strip()), "")
@@ -303,6 +339,28 @@ def check(text):
             )
             break
 
+    # R8: do not ask him for what he already handed over.
+    if supplied:
+        for ln in _after.splitlines():
+            s = ln.strip()
+            if not s or not ASK_FOR_INFO.search(s):
+                continue
+            reused = [t for t in set(IDENT.findall(s)) if t in supplied]
+            if reused:
+                problems.append(
+                    "R8 asking for something already supplied (CLAUDE.md 'Asking for "
+                    "already-stored info = infraction'): %r names %s, which is already in "
+                    "an earlier message of his. Go read it." % (s[:90], ", ".join(sorted(reused)))
+                )
+                break
+            if SUPPLIED.search(s) and _looks_pasted(supplied):
+                problems.append(
+                    "R8 asking for something already supplied (CLAUDE.md 'Asking for "
+                    "already-stored info = infraction'): %r asks for material he has "
+                    "already pasted in this session. Go read it." % s[:90]
+                )
+                break
+
     hit = BANNED.search(text)
     if hit:
         problems.append(
@@ -327,6 +385,43 @@ def _self_test():
     def check_arm(cond, label):
         if not cond:
             fails.append(label)
+
+    # ---- R8, from the real 2026-08-27 incident -------------------------------
+    # He wrote "he literally provided the numbers here" after pasting the MC525
+    # dimension block, and the close-out still asked him to confirm the sizes.
+    his = ("MC525 15*20cm (A5); 18*23cm; 20*25cm; 23*30cm (A4); 25*35cm\n"
+           "i gave u the photos still")
+    r8_hit = check("DONE\n- x\n\nYOUR MOVE\n- Tell me the MC525 sizes and I will run it.",
+                   supplied=his)
+    check_arm(any(p.startswith("R8 ") for p in r8_hit),
+              "r8: missed an ask for an identifier he already supplied")
+
+    # NEGATIVE CONTROL 1: same ask, nothing supplied. Must stay silent, or the
+    # rule becomes "never ask a question", which is not the rule.
+    check_arm(not any(p.startswith("R8 ") for p in
+                      check("DONE\n- x\n\nYOUR MOVE\n- Tell me the MC525 sizes and I will run it.",
+                            supplied="")),
+              "r8 negative control: fired with nothing supplied")
+
+    # NEGATIVE CONTROL 2: a genuine ask for something he never gave. The whole
+    # point of R8 is re-asking; a first ask is legitimate and must pass.
+    check_arm(not any(p.startswith("R8 ") for p in
+                      check("DONE\n- x\n\nYOUR MOVE\n- Tell me which supplier quoted F305.",
+                            supplied=his)),
+              "r8 negative control: fired on an identifier he never supplied")
+
+    # NEGATIVE CONTROL 3: mentioning the identifier without asking for it.
+    # Reporting on MC525 under YOUR MOVE is not a request to re-send it.
+    check_arm(not any(p.startswith("R8 ") for p in
+                      check("DONE\n- x\n\nYOUR MOVE\n- MC525 ships Monday once the printer confirms.",
+                            supplied=his)),
+              "r8 negative control: fired on a mention rather than an ask")
+
+    # An ask parked BEFORE YOUR MOVE is R3's job, not R8's: scope stays narrow.
+    check_arm(not any(p.startswith("R8 ") for p in
+                      check("DONE\n- Tell me the MC525 sizes.\n\nYOUR MOVE\n- Nothing.",
+                            supplied=his)),
+              "r8: leaked outside YOUR MOVE")
 
     with tempfile.TemporaryDirectory() as d:
         first = os.path.join(d, "first.jsonl")
@@ -413,6 +508,43 @@ def _from_stdin():
     return transcript, text
 
 
+def user_supplied(transcript_path):
+    """Every user-authored turn in this transcript, concatenated.
+
+    R8 needs the thing he actually handed over, not a summary of it. The
+    identifiers live in his own messages (SKUs, part names, pasted dimension
+    blocks), so the corpus to match against is his turns and nothing else.
+    Assistant turns are excluded on purpose: a token this session INVENTED
+    must never count as something the owner supplied.
+    """
+    out = []
+    try:
+        with open(transcript_path, encoding="utf-8", errors="ignore") as fh:
+            for ln in fh:
+                try:
+                    d = json.loads(ln)
+                except Exception:
+                    continue
+                if d.get("type") != "user":
+                    continue
+                c = (d.get("message") or {}).get("content")
+                if isinstance(c, str):
+                    t = c
+                elif isinstance(c, list):
+                    t = " ".join(b.get("text", "") for b in c
+                                 if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    continue
+                # tool results are echoes of MY work, not his words
+                if "tool_result" in t or t.startswith("[SYSTEM NOTIFICATION"):
+                    continue
+                if t.strip():
+                    out.append(t)
+    except OSError:
+        return ""
+    return "\n".join(out)
+
+
 def main():
     if "--self-test" in sys.argv:
         return _self_test()
@@ -428,7 +560,7 @@ def main():
         return 0
     if not turn_did_work(transcript):
         return 0
-    problems = check(text)
+    problems = check(text, supplied=user_supplied(transcript))
     if not problems:
         return 0
 
@@ -439,7 +571,7 @@ def main():
     # the only way this hook can ask for anything is to make Claude send a second
     # message, so enforcing them costs the owner a duplicate reply and buys a line
     # order. Advisory findings are logged and measurable, never blocked.
-    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 "))]
+    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 "))]
     advisory = [p for p in problems if p not in blocking]
 
     if advisory:
