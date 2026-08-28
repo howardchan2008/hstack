@@ -28,6 +28,11 @@ Checks, all mechanical:
       safe harbour; R6 is what closes that harbour. Fires on 16.5% of the 284
       close-outs in the corpus, against the 53.5% that got R2 demoted, and unlike
       R2 the rewrite it asks for is to do the work rather than to compress prose.
+  R9  a completion claim in DONE must carry the evidence the work EMITTED.
+      Blocking: the remedy is different content, not a rearrangement. Fires on
+      1.2% of the 1,882 close-outs in the corpus (22), against 24.2% before it
+      was scoped to short bare claims, where sampled precision was only ~40%.
+      Long lines carry their own context and are exempt by measurement.
   R7  one close-out per user turn. Not a check on the text: a cap on this hook.
       If a DONE heading already reached the owner in this turn, every remaining
       block is logged and the stop is allowed. The only remedy a Stop hook has
@@ -231,6 +236,64 @@ def _looks_pasted(user_text):
     return sum(1 for ln in user_text.splitlines() if ln.strip()) >= 8
 
 
+
+# R9 ADDED 2026-08-28. The root cause, after a local model read all 897 distinct
+# corrections: the largest theme cluster is hallucination (14 of 120), and its
+# sharpest four are FALSE CLAIMS ABOUT MY OWN PRIOR ACTIONS. "claiming 3 dms
+# were sent when only 1 went out". "claiming to have run a script". "asserted
+# .codex refilled from the absence of an error".
+#
+# The defect is not failing to read. It is reporting completion from INTENTION
+# rather than from EVIDENCE: "I did X" is generated exactly like any other
+# sentence, and nothing marks it as a claim that could be checked.
+#
+# So a DONE line that asserts something is finished must carry the evidence the
+# work produced: a count, a path, a URL, an exit code, a hash. Not the command
+# that was run, which proves only that it was attempted. Four instances in the
+# session that produced this rule, every one caught by luck rather than design:
+# "1,219 corrections" (a quarter was text he pasted), "17,784 directives" (two
+# thirds junk), "half your keychain wasted" (mostly macOS entries), and
+# "gbrain repointed" when the sync had imported zero files.
+CLAIMS_DONE = re.compile(
+    r"\b(?:pushed|committed|deployed|shipped|synced|sent|fixed|repaired|resolved|"
+    r"created|built|generated|wrote|written|ran|executed|installed|wired|enabled|"
+    r"disabled|removed|deleted|migrated|backed up|verified|completed|finished|"
+    r"landed|merged|updated|added)\b", re.I)
+
+# Evidence is something the work EMITTED. A digit, a path, a URL, an exit code,
+# a hash. Deliberately generous: the target is the bare "Fixed the prune job."
+# shape, not an honest sentence that happens to be short.
+EVIDENCE = re.compile(
+    r"\d"                                  # any count, version, date, exit code
+    r"|/[A-Za-z0-9._~-]+/"                  # a path
+    r"|https?://"                           # a link
+    r"|\b[0-9a-f]{7,40}\b"                  # a sha
+    r"|`[^`]+`"                             # a named artefact in backticks
+    r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|both|every|all|each|"
+    r"none|zero|clean|above|attached|below)\b"   # spelled-out or stated result
+    , re.I)
+
+# Sentences that are ANSWERS, not completion claims. "You were right" contains
+# no claim about my own output and must never fire.
+NOT_A_CLAIM = re.compile(
+    r"\byou (?:were|are) right\b|\bnot your\b|\bnothing\.\s*finished\b"
+    r"|\bstill owed\b|\bnot done\b|\bdid not\b|\bcould not\b|\bfailed to\b"
+    r"|\battempted\b|\bI have not\b|\bnothing (?:was|sent|to send)\b|\bheld back\b"
+    r"|\balready (?:pushed|committed|done|sent)\b|\bwhat I can say\b"
+    r"|\bwhat survived\b|\bresurfaced\b", re.I)
+
+
+def _done_lines(text):
+    """Bullet lines inside DONE, which is where completion claims live."""
+    before, _after = split_sections(text)
+    out = []
+    for ln in before.splitlines():
+        s = ln.strip()
+        if s.startswith(("-", "*")) and len(s) > 12:
+            out.append(s)
+    return out
+
+
 def check(text, supplied=""):
     problems = []
     lines = text.splitlines()
@@ -361,6 +424,26 @@ def check(text, supplied=""):
                 )
                 break
 
+    # R9: a completion claim in DONE must carry the evidence the work produced.
+    for s_ in _done_lines(text):
+        if NOT_A_CLAIM.search(s_) or not CLAIMS_DONE.search(s_):
+            continue
+        if EVIDENCE.search(s_):
+            continue
+        # Long lines carry their own context. The defect is the bare assertion:
+        # "Committed and pushed." Measured 2026-08-28, firing on every length gave
+        # ~40% precision, which would cost a duplicate message every other turn.
+        if len(s_) > 70:
+            continue
+        problems.append(
+            "R9 completion claim with no evidence (CLAUDE.md 'a completion claim must "
+            "carry the evidence that verifies it, produced after the work'): %r. Say what "
+            "the work EMITTED: the count, the path, the exit code, the URL. The command "
+            "you ran proves it was attempted, not that it is done. If you cannot produce "
+            "the evidence, the honest word is attempted." % s_[:90]
+        )
+        break
+
     hit = BANNED.search(text)
     if hit:
         problems.append(
@@ -385,6 +468,32 @@ def _self_test():
     def check_arm(cond, label):
         if not cond:
             fails.append(label)
+
+    # ---- R9: a completion claim must carry evidence ------------------------
+    bare = "DONE\n- Fixed the prune job.\n\nYOUR MOVE\n- Nothing."
+    check_arm(any(p.startswith("R9 ") for p in check(bare)),
+              "r9: missed a bare completion claim")
+
+    # NEGATIVE CONTROL 1: the same claim WITH the evidence must pass.
+    ok = "DONE\n- Fixed the prune job: exit 0, fresh log at 16:10.\n\nYOUR MOVE\n- Nothing."
+    check_arm(not any(p.startswith("R9 ") for p in check(ok)),
+              "r9 negative control: fired on a claim carrying evidence")
+
+    # NEGATIVE CONTROL 2: an ANSWER is not a completion claim.
+    ans = "DONE\n- You were right, and the phrasing was never the problem.\n\nYOUR MOVE\n- Nothing."
+    check_arm(not any(p.startswith("R9 ") for p in check(ans)),
+              "r9 negative control: fired on an answer")
+
+    # NEGATIVE CONTROL 3: honestly reporting NON-completion must pass. The rule
+    # exists to make 'attempted' sayable, so it must never punish saying it.
+    att = "DONE\n- Attempted the sync; it did not import anything.\n\nYOUR MOVE\n- Nothing."
+    check_arm(not any(p.startswith("R9 ") for p in check(att)),
+              "r9 negative control: fired on an honest non-completion")
+
+    # NEGATIVE CONTROL 4: a named artefact in backticks is evidence.
+    art = "DONE\n- Wired `com.the owner.jobq-drain` and it drained.\n\nYOUR MOVE\n- Nothing."
+    check_arm(not any(p.startswith("R9 ") for p in check(art)),
+              "r9 negative control: fired on a named artefact")
 
     # ---- R8, from the real 2026-08-27 incident -------------------------------
     # He wrote "he literally provided the numbers here" after pasting the MC525
@@ -571,7 +680,7 @@ def main():
     # the only way this hook can ask for anything is to make Claude send a second
     # message, so enforcing them costs the owner a duplicate reply and buys a line
     # order. Advisory findings are logged and measurable, never blocked.
-    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 "))]
+    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 ", "R9 "))]
     advisory = [p for p in problems if p not in blocking]
 
     if advisory:
