@@ -30,7 +30,12 @@ import re
 import sys
 
 STORE = os.environ.get("PROMPT_ITEMS_ROOT") or os.path.expanduser("~/.claude/carryover")
-MAX_ITEMS = 12
+# 2026-08-28: was 12, and the owner approved FIFTEEN a venture items in one
+# message. Items 13-15 were dropped at the `return` below with nothing said, so
+# the turn read as fully covered while three approvals never entered the list.
+# A silent cap is the same defect as a false zero: the work looks done because
+# the instrument stopped counting. Raised, and the cap now announces itself.
+MAX_ITEMS = 40
 MAX_ITEM_CHARS = 160
 
 # Lines that are harness furniture, not the owner asking for something.
@@ -141,6 +146,10 @@ def split_items(prompt):
                     continue
             items.append(p[:MAX_ITEM_CHARS])
             if len(items) >= MAX_ITEMS:
+                # Never truncate in silence. The marker is itself an item, so it
+                # is re-injected next turn and cannot be missed.
+                items.append(f"OVERFLOW: split stopped at {MAX_ITEMS}; "
+                             "re-read the prompt for anything past this point")
                 return items
     return items
 
@@ -264,6 +273,22 @@ if __name__ == "__main__":
         if back != ["rotate ascend pw", "give social advice"]:
             fails.append(f"round trip lost items: {back}")
 
-        print("FAIL: " + "; ".join(fails) if fails else "PASS: all 7 checks")
+        # 8. FIFTEEN items survive. the owner approved 15 a venture items in one
+        #    message on 2026-08-27 and the cap was 12, so three approvals were
+        #    dropped at the return with nothing said.
+        fifteen = " ".join(f"{i}. fix the item number {i} on the site" for i in range(1, 16))
+        got15 = split_items(fifteen)
+        if len(got15) != 15:
+            fails.append(f"fifteen items split into {len(got15)}, not 15")
+
+        # 9. The cap, wherever it sits, must ANNOUNCE itself. A silent truncation is
+        #    the false-zero defect: the turn reads as covered because counting stopped.
+        over = " ".join(f"{i}. fix the item number {i} on the site"
+                        for i in range(1, MAX_ITEMS + 6))
+        got_over = split_items(over)
+        if not any(i.startswith("OVERFLOW:") for i in got_over):
+            fails.append(f"cap truncated silently at {len(got_over)} items")
+
+        print("FAIL: " + "; ".join(fails) if fails else "PASS: all 9 checks")
         sys.exit(1 if fails else 0)
     main()
