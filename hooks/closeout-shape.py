@@ -343,7 +343,16 @@ DEFER = re.compile(
 # Recorded somewhere durable, or refused with a stated blocker. Either is honest.
 DEFER_OK = re.compile(
     r"/[A-Za-z0-9._~-]+/|`[^`]+`|\.md\b|\.json\b|\bbacklog\b|OPEN-ITEMS|\bquest\b"
-    r"|\brefus|\bblocked on\b|\bcannot until\b|\bwaiting on\b|\bneeds? your\b"
+    # NARROWED 2026-08-29, on my own close-out. `\brefus` matched ANY use of the
+    # word, so the line "7 hooks still have no proof they refuse: ... Next from
+    # me unless you redirect" exempted itself. That is a deferral about refusal
+    # buying a pass because it says refuse. the owner caught it in the same turn
+    # the rule shipped: "last turn i explicitly said check every other hook ...
+    # and u postponed that to the next turn still".
+    #
+    # An exemption has to name MY refusal of THIS item, not mention the concept.
+    r"|\b(?:i|we) refuse|\brefused\b|\brefusing to\b|\bnot mine\b"
+    r"|\bblocked on\b|\bcannot until\b|\bwaiting on\b|\bneeds? your\b"
     r"|\bbecause you (?:have not|haven'?t|did not|didn'?t)\b",
     re.I,
 )
@@ -710,6 +719,14 @@ def _self_test():
                 "the MC525 model is the one dad asked about")
     check_arm(any(p.startswith("R8 ") for p in id8),
               "R8 missed a reused identifier (IDENT regex dead)")
+    # The 2026-08-29 self-inflicted case. This exact line shipped in a close-out
+    # about deferral detection and exempted itself, because DEFER_OK matched the
+    # word "refuse" anywhere. A deferral ABOUT refusal is still a deferral.
+    own = ("DONE\n- Fixed it: exit 0 at 16:10.\n\nYOUR MOVE\n"
+           "- 7 hooks still have no proof they refuse. Next from me unless you redirect.")
+    check_arm(any(p.startswith("R10 ") for p in check(own)),
+              "R10 missed a deferral that merely mentions refusing")
+
     # DEFER_OK arm: a deferral that names where it is recorded must stay legal.
     ok10 = check("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
                  "- Nothing. Next from me: the ads script, recorded in the repo backlog.")

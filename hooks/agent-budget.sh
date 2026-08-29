@@ -46,7 +46,15 @@ KEEP_AGO=$(( NOW_EPOCH - 14 * 86400 ))
 # Read hook input from stdin JSON. PreToolUse is already gated to "Agent" by the
 # settings.json matcher; double-check defensively, and grab the session id.
 INPUT=$(cat 2>/dev/null || echo "{}")
-TOOL=$(echo "$INPUT" | /usr/bin/grep -oE '"tool_name":"[^"]+"' | head -1 | /usr/bin/sed 's/"tool_name":"//;s/"//')
+# WHITESPACE AFTER THE COLON, fixed 2026-08-29. This grep required `"tool_name":"Agent"`
+# with no space, so a pretty-printed payload left TOOL empty and the very next
+# line exited 0: the budget was not enforced at all on that shape. The comment
+# thirty lines below already records this exact bug being found and fixed for
+# the SESSION id, and the same defect was sitting here untouched, because
+# nothing ever asserted that this hook refuses. Found by writing that assertion.
+TOOL=$(printf '%s' "$INPUT" | /usr/bin/python3 -c 'import json,sys
+try: print((json.load(sys.stdin) or {}).get("tool_name") or "")
+except Exception: print("")' 2>/dev/null)
 [ "$TOOL" != "Agent" ] && exit 0
 # The old regex required no space after the colon, so a pretty-printed payload
 # never matched and every session shared one "unknown" budget bucket. $INPUT
