@@ -9,12 +9,12 @@ whole interface. Everything in this repo is one of those programs.
 ```
                     ┌──────────────────────────────┐
  user prompt ──────▶│ UserPromptSubmit             │  inject: items, carryover,
-                    │  5 hooks, none of them block │  cost, the report contract
+                    │  6 hooks, none of them block │  cost, the report contract
                     └──────────────┬───────────────┘
                                    ▼
                     ┌──────────────────────────────┐
    tool call ──────▶│ PreToolUse                   │  refuse: exit 2, or a
-                    │  12 hooks, 9 of them refuse  │  deny object on stdout
+                    │  18 hooks, 15 of them refuse │  deny object on stdout
                     └──────────────┬───────────────┘
                           refused ─┴─▶ back to the model with the reason
                                    ▼
@@ -26,7 +26,7 @@ whole interface. Everything in this repo is one of those programs.
                                    ▼
                     ┌──────────────────────────────┐
    end of turn ────▶│ Stop                         │  refuse to finish with
-                    │  3 hooks, 2 of them refuse   │  work left on the floor
+                    │  8 hooks, 6 of them refuse   │  work left on the floor
                     └──────────────────────────────┘
 
   SessionStart (4 hooks): prove the guards are armed, say who else is live,

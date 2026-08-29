@@ -21,6 +21,7 @@ So the manifest is the source of truth and this asserts the rest against it.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import re
 import sys
@@ -114,6 +115,53 @@ def main() -> int:
             n_int = int(n) if n.isdigit() else words.get(n.lower())
             if n_int is not None and n_int != len(hooks):
                 fails.append(f"README says {n} hooks; the manifest has {len(hooks)}")
+
+    # 6. PER-EVENT counts in prose must be the real ones too.
+    #
+    # Added 2026-08-29. Rule 5 above checks the TOTAL, and the total was right
+    # while the breakdown in docs/ARCHITECTURE.md had been wrong for months:
+    # the diagram claimed 5 UserPromptSubmit (6), 12 PreToolUse of which 9
+    # refuse (18, of which 15), and 3 Stop of which 2 refuse (8, of which 6).
+    # Three of four numbers wrong, in the first diagram a reader sees, with the
+    # whole suite green. A number nobody re-derives is the prose form of a
+    # regex nobody exercises: it reads as fact and nothing notices it rot.
+    per_event = collections.Counter(h["event"] for h in hooks)
+    refusing = collections.Counter(
+        h["event"] for h in hooks
+        if str(h.get("block", "none")).lower() not in ("none", "", "no"))
+    EVENTS = set(per_event)
+
+    for doc in (REPO / "docs" / "ARCHITECTURE.md", README):
+        if not doc.exists():
+            continue
+        rel, text = doc.name, doc.read_text()
+
+        # "SessionStart (4 hooks)" and the README's "18 `PreToolUse`"
+        for ev, n in re.findall(r"\b(\w+)\s*\((\d+)\s+hooks?\)", text):
+            if ev in EVENTS and int(n) != per_event[ev]:
+                fails.append(f"{rel} says {ev} has {n} hooks; the manifest has {per_event[ev]}")
+        for n, ev in re.findall(r"\b(\d+)\s+`?(\w+)`?", text):
+            if ev in EVENTS and int(n) != per_event[ev]:
+                fails.append(f"{rel} says {n} {ev}; the manifest has {per_event[ev]}")
+
+        # The diagram: an event name, then "N hooks, M of them refuse" below it.
+        current = None
+        for line in text.splitlines():
+            for ev in EVENTS:
+                if re.search(rf"\b{ev}\b", line):
+                    current = ev
+            m = re.search(r"(\d+)\s+hooks?,\s+(none|\d+)\s+of them\s+(?:refuse|block)", line)
+            if not m or not current:
+                continue
+            n = int(m.group(1))
+            want_r = refusing[current]
+            got_r = 0 if m.group(2) == "none" else int(m.group(2))
+            if n != per_event[current]:
+                fails.append(f"{rel} diagram says {current} has {n} hooks; "
+                             f"the manifest has {per_event[current]}")
+            if got_r != want_r:
+                fails.append(f"{rel} diagram says {got_r} of {current} refuse; "
+                             f"the manifest has {want_r}")
 
     for f in fails:
         print(f"  FAIL {f}")
