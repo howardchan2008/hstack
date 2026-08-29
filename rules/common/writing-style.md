@@ -105,5 +105,5 @@ RULES:
 - Same rule for SOT tabs: prepend a correction block onto the existing person/venture tab rather
   than creating tab N+1. The Portfolio SOT is at Google's 100-tab cap anyway.
 - Consolidating later is expensive and lossy. The canonical audit doc for the self/relationship
-  work is `~/Downloads/Personal/Founder/self-claims-verified-2026-08-22.md`
+  work is `~/Downloads/Personal/self-claims-verified-2026-08-22.md`
   (doc 12QdfJrXKHmWdFvAEy1PBrHdZE2M4ktVx_bIJC5T4cjs), Parts One through Thirty-One.
