@@ -194,6 +194,13 @@ def _self_test():
     ck(not offenders("Nothing else writes to it.", []), "generic subject must not fire")
     ck(not offenders("The test is broken and I fixed it.", []),
        "'test' is too generic to be a capability verdict")
+
+    # --- DEAD-BRANCH ARMS 2026-08-29. CLAIM2 and HEDGED could each be corrupted
+    # to never match and this self-test stayed green, so neither was enforcing.
+    ck(offenders("vertex_image.py cannot generate images on this box.", []),
+       "CLAIM2: the verb-second 'X cannot <verb>' form must fire")
+    ck(not offenders("I have not tested it, but vertex_image.py cannot generate images.", []),
+       "HEDGED: a claim carrying its own hedge is allowed")
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

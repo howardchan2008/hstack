@@ -9,8 +9,12 @@
 #   3. self-tests    the four hooks that carry their own.
 #   4. negative      every guard refuses what it exists to refuse, and stays out
 #                    of the way of ordinary work.
+#   5. dead branches  every regex in every hook is load-bearing: corrupt it and
+#                    that hook's own self-test must notice. Sections 3 and 4
+#                    both pass while a rule's regex is dead, because neither
+#                    checks that each BRANCH is exercised.
 #
-# Exit 0 only if all four pass.
+# Exit 0 only if all five pass.
 
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,6 +62,9 @@ done
 
 section "negative control"
 "$PY" "$REPO/tests/negative-control.py" || fail=1
+
+section "dead branches"
+"$PY" "$REPO/tests/dead-branch-sweep.py" || fail=1
 
 printf '\n'
 if [ "$fail" -eq 0 ]; then echo "hstack: suite PASS"; else echo "hstack: suite FAIL"; fi

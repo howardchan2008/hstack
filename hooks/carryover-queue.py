@@ -46,6 +46,63 @@ CANCEL = re.compile(
 )
 
 
+BACKLOG_NAMES = ("OPEN-ITEMS.md",)
+
+
+def repo_backlog(cwd):
+    """Unchecked items in the repo's own backlog file.
+
+    ADDED 2026-08-29, and it is the reason this hook existed without working.
+    Measured that day: "CARRYOVER QUEUE" appears in ZERO transcripts, live (270)
+    and archived (3,638). The hook is correct when handed a payload, proved by
+    running it, but its only store is ~/.claude/tasks/<session_id>/, written by
+    TaskCreate. 16 task dirs exist across 3,908 sessions (0.41%), and 6 of those
+    hold an open item. So the real coverage is about one session in seven hundred,
+    and the queue died at session end every other time.
+
+    the owner, 2026-08-29: "im asking u to audit why the agent has repeatedly failed
+    to comply with my requests, delegating my ask the next term". A promise made in
+    one session had no carrier into the next, so R10 in closeout-shape.py can tell
+    the model to record a deferral, and THIS is what makes the record come due.
+
+    A file in the repo survives the session, is committed with the work, and is
+    visible to every lane in that tree. One store per repo, per the SOT rule: this
+    reads the file that is already there and never creates a second one.
+    """
+    out = []
+    if not cwd or not os.path.isdir(cwd):
+        return out
+    root, d = None, os.path.abspath(cwd)
+    for _ in range(8):
+        if os.path.isdir(os.path.join(d, ".git")):
+            root = d
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    if not root:
+        return out
+    seen = set()
+    for name in BACKLOG_NAMES:
+        cands = [os.path.join(root, name), os.path.join(root, "docs", name)]
+        cands += sorted(glob.glob(os.path.join(root, "*", "docs", name)))[:4]
+        for path in cands:
+            if path in seen or not os.path.isfile(path):
+                continue
+            seen.add(path)
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    body = fh.read(120_000)
+            except Exception:
+                continue
+            items = re.findall(r"^\s*[-*]\s*\[ \]\s*(.+)$", body, re.M)
+            if items:
+                rel = os.path.relpath(path, root)
+                out.append((rel, [re.sub(r"\s+", " ", i).strip()[:110] for i in items]))
+    return out
+
+
 def open_tasks(session_id):
     """Items this session opened and never closed."""
     out = []
@@ -122,8 +179,9 @@ def main():
 
     tasks = open_tasks(session_id)
     interrupted = was_interrupted(payload.get("transcript_path"))
+    backlog = repo_backlog(str(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or ""))
 
-    if not tasks and not interrupted:
+    if not tasks and not interrupted and not backlog:
         # Nothing pending. Say nothing: a reminder that fires on every prompt is
         # noise, and noise is what taught the reader to skip the whole block.
         return
@@ -152,6 +210,20 @@ def main():
             lines.append("    - [%s] %s" % (status, subject))
         if len(tasks) > 12:
             lines.append("    - (+%d more in the task list)" % (len(tasks) - 12))
+
+    for rel, items in backlog:
+        lines.append("  Owner backlog still open in %s (%d item%s):"
+                     % (rel, len(items), "" if len(items) == 1 else "s"))
+        for it in items[:3]:
+            lines.append("    - %s" % it)
+        if len(items) > 3:
+            lines.append("    - (+%d more in that file)" % (len(items) - 3))
+        lines.append(
+            "    These are HIS asks, carried from an earlier session. An item leaves "
+            "that file when it is done with evidence, or refused out loud by name. "
+            "Check its status against the world before repeating it: the file is "
+            "written from memory and has already carried a done item as open."
+        )
 
     if cancelling:
         lines.append(

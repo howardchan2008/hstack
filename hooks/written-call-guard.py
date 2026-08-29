@@ -169,6 +169,13 @@ def _self_test():
        "the sanctioned whatsapp lane must pass")
     ck(not check("/tmp/read.py", "gmail.googleapis.com/gmail/v1/messages/list"),
        "reading mail is not sending mail")
+
+    # --- DEAD-BRANCH ARM 2026-08-29. VIA_LANE could be corrupted to never match
+    # and this test stayed green: the wa.py arm passes because OUTBOUND misses
+    # it, not because VIA_LANE exempts it. This one reaches the exemption.
+    ck(not check("/tmp/send.py", "pm-send --to someone@example.com posting to "
+                 "https://api.resend.com/emails from the approved lane"),
+       "VIA_LANE: a send through the sanctioned lane must pass")
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

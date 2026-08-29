@@ -133,6 +133,15 @@ def split_items(prompt):
         # fragments came back with two real items lost. When a line holds three or
         # more ascending inline markers, split on THOSE and skip the guessing.
         parts = split_enumerated(line)
+        # HE NUMBERED IT, so every part is an item. Found 2026-08-29 by a
+        # dead-branch arm: "1. fix the footer 2. rebuild the thumbnails 3. send
+        # the batch" came back with the MIDDLE item gone, because "rebuild the
+        # thumbnails" is not on the ASKS verb whitelist below. Dropping an item
+        # he numbered with his own hand is the exact defect this hook exists to
+        # stop ("u always only act on the first part and not the entirety"), and
+        # the comment directly above already said his enumeration beats the
+        # guess. The code then applied the guess anyway.
+        enumerated = parts is not None
         if parts is None:
             # the owner writes long run-ons joined by commas and "and". Split on the joins
             # that reliably separate two asks, not on every comma.
@@ -141,7 +150,7 @@ def split_items(prompt):
             p = p.strip(" ,.;-")
             if len(p) < 8:
                 continue
-            if not ASKS.search(p):
+            if not enumerated and not ASKS.search(p):
                 if not CORRECTS.search(p) or SOFTENED.search(p):
                     continue
             items.append(p[:MAX_ITEM_CHARS])
@@ -229,6 +238,14 @@ if __name__ == "__main__":
         got = split_items(p)
         if len(got) < 3:
             fails.append(f"multi-part prompt split into only {len(got)} items: {got}")
+
+        # 1b. DEAD-BRANCH ARM 2026-08-29: MARKER could be corrupted to never
+        # match and this test stayed green, so numbered prompts were never split
+        # on their numbers at all.
+        numbered = "1. fix the footer 2. rebuild the thumbnails 3. send the batch"
+        gotn = split_items(numbered)
+        if len(gotn) < 3:
+            fails.append(f"numbered prompt split into only {len(gotn)} items: {gotn}")
 
         # 2. Harness furniture must never become an item.
         noise = ("<system-reminder>do the thing</system-reminder>\n"

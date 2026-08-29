@@ -254,6 +254,106 @@ def _looks_pasted(user_text):
 # "1,219 corrections" (a quarter was text he pasted), "17,784 directives" (two
 # thirds junk), "half your keychain wasted" (mostly macOS entries), and
 # "gbrain repointed" when the sync had imported zero files.
+# --- R11 ADDED 2026-08-29 -------------------------------------------------
+# the owner: "well corrections are still important and shouldnt be ignored", after
+# R10 was backtested and caught 0 of his 3 August deferral complaints. The two
+# R10 missed were GATED OFFERS, and the finding that matters is that R6 did not
+# catch them either, in its own section, on its own turf:
+#
+#   "Say send and the 20 go out ... and I will replace it before sending."
+#   "If you would rather the copy had come off the free lane, say regenerate
+#    and I will rebuild all 20 on Codex against the same threads."
+#
+# OFFER matched both ("I will"). GATE matched NEITHER, because GATE knows only
+# the fixed phrase "say the word" while these name the trigger word itself: "say
+# send", "say regenerate". Same defect R10 documented one rule earlier: a real
+# evasion sitting INSIDE a rule's declared scope. Scope was never the hole, so
+# widening R6's section would not have found it.
+#
+# What makes it parked work and not a legal ask: the missing input is his ASSENT
+# to work already built. Twenty drafts sat finished behind the word "send". So
+# SUPPLY keeps legal the ask where he alone holds a FACT, or where the world has
+# to move first: "tell me when it is on", "tell me the MC525 sizes", "once the
+# printer confirms". Approval is parked work; a fact he owns is not.
+ASSENT = re.compile(
+    r"\b("
+    r"say [a-z']+(?: [a-z']+)? and\b|say (?:the word|go|yes|so|ok|okay)\b|"
+    r"give me the (?:go|word|nod)\b|greenlight|green light|"
+    r"if you (?:want|would rather|'d rather|prefer|approve|agree|say so)\b|"
+    r"once you (?:confirm|approve|decide|say)\b|"
+    r"on your word\b|at your word\b|parked on your word|"
+    r"(?:just )?confirm and\b|approve and\b"
+    r")",
+    re.I,
+)
+SUPPLY = re.compile(
+    r"\b("
+    r"tell me (?:when|what|which|who|whether|how|the|your|if)\b|"
+    r"give me (?:the )?(?:password|login|token|code|sizes?|number|address|name)\b|"
+    r"send me\b|paste\b|forward me\b|"
+    r"once (?:the|it|they|he|she|that)\b|after you (?:have )?(?:set|turn|enable|add|create)"
+    r")",
+    re.I,
+)
+
+
+# --- R10 ADDED 2026-08-29 -------------------------------------------------
+# the owner: "im not asking you to do the tasks for me, im asking u to audit why the
+# agent has repeatedly failed to comply with my requests, delegating my ask the
+# next term". His own words three days earlier, 2026-08-26: "u keep delegating me
+# tasks to do, instead of doing it urself".
+#
+# WHY EVERY EXISTING RULE MISSES IT. R3 and R6 both police work handed BACK to
+# the owner. R6 needs OFFER and GATE on one line: an action plus permission asked
+# for it. The close-out that prompted this read
+#
+#   "YOUR MOVE
+#    Nothing. Next from me, in this order and without asking: the ads
+#    reconfiguration script for your mum, then the thumbnails..."
+#
+# and matched NEITHER half. "Next from me" carries no first-person verb, so OFFER
+# misses; "without asking" is the negation of GATE, so GATE misses. Measured: that
+# line passes R1, R3, R5, R6 and R9 clean. The phrase "without asking" is CLAUDE.md's
+# own DECIDE-DO-NOT-ASK directive being quoted as cover for not doing the work.
+#
+# So the model found the one disposition that costs nothing: keep the item, name
+# it as mine, do none of it. That empties YOUR MOVE, which the format explicitly
+# calls "the target state", and the cheapest way to empty it is to promise.
+#
+# Measured over 1,686 live close-outs: 136 (8.1%) carry a forward promise, and this
+# rule as scoped fires on 19 (1.1%). Promises are NOT a context-exhaustion artifact:
+# their median position in a session is 0.58 against a 0.56 baseline, and 15.9% land
+# in the final tenth against a 17.2% baseline. There is room left when they are made.
+# One item ("parallel render loop still unshipped, as flagged last turn") fired on
+# five consecutive turns, which is the defect documenting itself.
+#
+# A deferral stays legal when it is RECORDED (a path, a backlog file, a quest) or
+# REFUSED with its blocker named. What it may not be is a promise with no carrier.
+DEFER = re.compile(
+    r"\bnext from me\b"
+    r"|\bnext session,? i\b"
+    r"|\bi'?ll (?:do|start|write|build|run|tackle|pick|get|fold|add) [^.]{0,40}\bnext\b"
+    r"|\bthen i'?ll (?:do|start|write|build|run|tackle|fix|ship|add|fold)\b"
+    r"|\bi (?:have )?(?:still )?(?:have )?not (?:yet )?(?:written|built|done|started|shipped)\b"
+    r"|\bstill (?:not|un)(?:written|built|started|shipped)\b"
+    r"|\b(?:left|leaving) (?:it |that )?(?:for|to) (?:the )?next\b"
+    r"|\bwill do next\b|\bcoming next\b",
+    re.I,
+)
+# Recorded somewhere durable, or refused with a stated blocker. Either is honest.
+DEFER_OK = re.compile(
+    r"/[A-Za-z0-9._~-]+/|`[^`]+`|\.md\b|\.json\b|\bbacklog\b|OPEN-ITEMS|\bquest\b"
+    r"|\brefus|\bblocked on\b|\bcannot until\b|\bwaiting on\b|\bneeds? your\b"
+    r"|\bbecause you (?:have not|haven'?t|did not|didn'?t)\b",
+    re.I,
+)
+# Quoted material is data, not a promise: draft copy, a WhatsApp line, his own words.
+# Half the first draft's hits were these, which is why the rule skips them outright.
+DEFER_QUOTE = re.compile(
+    r'^\s*(?:>|\*\*[A-Z] \d{1,2}:\d{2}|["\u201c])'
+    r'|^\s*[-*]?\s*\d+\.\s*(?:Hi|Hello|Dear)\b'
+)
+
 CLAIMS_DONE = re.compile(
     r"\b(?:pushed|committed|deployed|shipped|synced|sent|fixed|repaired|resolved|"
     r"created|built|generated|wrote|written|ran|executed|installed|wired|enabled|"
@@ -444,6 +544,46 @@ def check(text, supplied=""):
         )
         break
 
+    # R11 ADDED 2026-08-29. Fires anywhere in the close-out, unlike R6, because
+    # the shape is not about placement: an offer parked behind his assent is the
+    # same defect in DONE as under YOUR MOVE. Both halves must land on ONE line,
+    # keeping R6's discipline, and SUPPLY takes the line back out when the thing
+    # he must give is a fact or an event rather than permission.
+    for ln in text.splitlines():
+        s_ = ln.strip()
+        if not s_ or not OFFER.search(s_) or not ASSENT.search(s_):
+            continue
+        if SUPPLY.search(s_):
+            continue
+        # Quoted material is data, not an offer. Same exemption R10 carries:
+        # this session's own close-out quoted the owner's "say regenerate and I
+        # will rebuild" back at him as evidence and R11 fired on the quote.
+        if DEFER_QUOTE.match(s_):
+            continue
+        problems.append(
+            "R11 work parked behind your assent (the owner 2026-08-24, twice: work "
+            "finished and held on a trigger word): %r. It is built and you are "
+            "the switch. Do it, or name what you are actually missing." % s_[:110]
+        )
+        break
+
+    # R10: work deferred to a future turn with nothing to make it come due.
+    for ln in text.splitlines():
+        s10 = ln.strip()
+        if not s10 or not DEFER.search(s10):
+            continue
+        if DEFER_QUOTE.match(s10) or DEFER_OK.search(s10):
+            continue
+        problems.append(
+            "R10 work deferred to a future turn (the owner 2026-08-26: 'u keep delegating me "
+            "tasks to do, instead of doing it urself'): %r. R3 and R6 only catch work handed "
+            "BACK to him; this hands it FORWARD to yourself, which no rule priced and nothing "
+            "carries. Do it in this turn, or write it into the repo backlog and name the file "
+            "on this line, or refuse it out loud with the blocker. A promise is not a "
+            "disposition." % s10[:110]
+        )
+        break
+
     hit = BANNED.search(text)
     if hit:
         problems.append(
@@ -502,6 +642,123 @@ def _self_test():
            "i gave u the photos still")
     r8_hit = check("DONE\n- x\n\nYOUR MOVE\n- Tell me the MC525 sizes and I will run it.",
                    supplied=his)
+    # R10 arms. The blocking one is the exact close-out the owner pasted 2026-08-29.
+    defer = ("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
+             "Nothing. Next from me, in this order and without asking: the ads "
+             "reconfiguration script for your mum, then the thumbnails.")
+    check_arm(any(p.startswith("R10 ") for p in check(defer)),
+              "R10 missed the pasted close-out: deferral with no carrier")
+    # recorded -> legal
+    rec = ("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
+           "- Nothing. Ads script not started, recorded in `storefront/docs/OPEN-ITEMS.md`.")
+    check_arm(not any(p.startswith("R10 ") for p in check(rec)),
+              "R10 fired on a deferral that names its backlog file")
+    # refused with a blocker -> legal
+    ref = ("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
+           "- Thumbnails still not built, blocked on your approval of the one sample.")
+    check_arm(not any(p.startswith("R10 ") for p in check(ref)),
+              "R10 fired on a deferral that names its blocker")
+    # quoted draft copy is data, not a promise
+    quo = ('DONE\n- Drafted the follow-up:\n> Hi Adhvaith, following up once and then '
+           "I'll leave it.\n\nYOUR MOVE\n- Nothing.")
+    check_arm(not any(p.startswith("R10 ") for p in check(quo)),
+              "R10 fired on quoted draft copy")
+    # a clean close-out must stay clean
+    # R11 arms. The blocking one is the exact YOUR MOVE line the owner corrected on
+    # 2026-08-24, verbatim from that close-out.
+    g11 = ("DONE\n- Staged all 20, nothing sent.\n\nYOUR MOVE\n"
+           "- If you would rather the copy had come off the free lane, say "
+           "regenerate and I will rebuild all 20 on Codex.")
+    check_arm(any(p.startswith("R11 ") for p in check(g11)),
+              "R11 missed the 2026-08-24 gated offer")
+    # An event in the world he must trigger stays legal, or the rule punishes
+    # the correct handover it exists to protect.
+    check_arm(not any(p.startswith("R11 ") for p in check(
+                  "DONE\n- Forward rule researched.\n\nYOUR MOVE\n"
+                  "- Tell me when it is on and I will read the triage.")),
+              "R11 fired on an event only the owner can cause")
+    check_arm(not any(p.startswith("R11 ") for p in check(
+                  "DONE\n- x\n\nYOUR MOVE\n"
+                  "- Give me the password and I will finish it.")),
+              "R11 fired on a fact only the owner holds")
+    check_arm(not any(p.startswith("R11 ") for p in check(
+                  "DONE\n- Backtested.\n\nYOUR MOVE\n- Nothing.\n"
+                  "> say regenerate and I will rebuild all 20")),
+              "R11 fired on quoted material")
+    # SUPPLY arm: verbatim from a real 2026-08 close-out. The ONLY arm where SUPPLY
+    # decides. Without it SUPPLY is unreachable, and the negative control that
+    # corrupts it passes green, which is exactly how it sat dead when first written.
+    sup = ("DONE\n- x\n\nYOUR MOVE\n"
+           "- If you want to write the incident framework properly for us, tell me "
+           "what you would want in return and I will make the time.")
+    check_arm(not any(p.startswith("R11 ") for p in check(sup)),
+              "R11 fired on a fact only the owner can supply")
+    check_arm(not any(p.startswith("R11 ") for p in
+                      check("DONE\n- Footer now reads a venture.com, verified live."
+                            "\n\nYOUR MOVE\n- Nothing.")),
+              "R11 false-positive on a clean close-out")
+
+    check_arm(not any(p.startswith("R10 ") for p in
+                      check("DONE\n- Footer now reads a venture.com, verified live.\n\nYOUR MOVE\n- Nothing.")),
+              "R10 false-positive on a clean close-out")
+
+    # IDENT arm. R8 has two branches and only the second was ever reached, so
+    # IDENT could be corrupted to never match with this test green. Here the
+    # supplied text is one plain sentence, so _looks_pasted is False and the
+    # SUPPLIED branch cannot fire: only the reused-identifier branch can.
+    id8 = check("DONE\n- x\n\nYOUR MOVE\n- Tell me the MC525 sizes and I will run it.",
+                "the MC525 model is the one dad asked about")
+    check_arm(any(p.startswith("R8 ") for p in id8),
+              "R8 missed a reused identifier (IDENT regex dead)")
+    # DEFER_OK arm: a deferral that names where it is recorded must stay legal.
+    ok10 = check("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
+                 "- Nothing. Next from me: the ads script, recorded in the repo backlog.")
+    check_arm(not any(p.startswith("R10 ") for p in ok10),
+              "R10 fired on a deferral that names its record (DEFER_OK regex dead)")
+
+    # --- DEAD-BRANCH ARMS ADDED 2026-08-29 ------------------------------------
+    # Found by corrupting each module-level regex one at a time and re-running this
+    # self-test. Five stayed green with the regex dead: ASK, BANNED, GATE, SUPPLIED,
+    # NOT_A_CLAIM. Three of those five sit inside BLOCKING rules (R6, R8, R9), so the
+    # gate could have stopped enforcing them and nothing here would have said so.
+    #
+    # This is the mirror of the failure the evidence-gate rule already names. A gate
+    # that always FAILS is a gate nobody reads; a gate that always PASSES is a gate
+    # nobody notices, and it is worse, because it reports success while enforcing
+    # nothing. Every rule now needs at least one arm that dies when its regex dies.
+    #
+    # Direction matters and differs per rule. GATE dead makes R6 UNDER-block (R6 needs
+    # OFFER and GATE on one line), so it needs a must-FIRE arm. SUPPLIED and
+    # NOT_A_CLAIM are exemption halves: dead, they make R8 and R9 OVER-block, so they
+    # need arms that pin the exempted shape.
+    ask3 = check("DONE\n- Fixed the prune job.\n- Let me know if you want the full "
+                 "list.\n\nYOUR MOVE\n- Nothing.")
+    check_arm(any(p.startswith("R3 ") for p in ask3),
+              "R3 missed an ask sitting in DONE (ASK regex dead)")
+    ban4 = check("DONE\n- Staged all 20.\n\nYOUR MOVE\n- STOPPING: You said draft, "
+                 "not send.")
+    check_arm(any(p.startswith("R4 ") for p in ban4),
+              "R4 missed an internal token in the close-out (BANNED regex dead)")
+    # Real 2026-08 shape: an offer to act, held behind his approval, on one line.
+    gate6 = check("DONE\n- Staged all 20, nothing sent.\n\nYOUR MOVE\n- If you want "
+                  "the mirror files regenerated, say so and I will rebuild them.")
+    check_arm(any(p.startswith("R6 ") for p in gate6),
+              "R6 missed a gated offer in YOUR MOVE (GATE regex dead)")
+    # R8's second branch: no SKU token reused, so only SUPPLIED plus a pasted-looking
+    # earlier message can catch it. The existing r8_hit arm exercises the IDENT branch
+    # only, which is why SUPPLIED could die unnoticed.
+    sup8 = check("DONE\n- x\n\nYOUR MOVE\n- Send me the photos again and I will "
+                 "restamp them.",
+                 "\n".join("row %d of the export" % i for i in range(9)))
+    check_arm(any(p.startswith("R8 ") for p in sup8),
+              "R8 missed a re-ask for pasted material (SUPPLIED regex dead)")
+    # An honest report of work NOT done is not a completion claim and must never be
+    # asked for evidence. NOT_A_CLAIM dead turns every such line into an R9 finding.
+    nac9 = check("DONE\n- Nothing was pushed; the tree is still dirty.\n\nYOUR MOVE"
+                 "\n- Nothing.")
+    check_arm(not any(p.startswith("R9 ") for p in nac9),
+              "R9 fired on an honest not-done line (NOT_A_CLAIM regex dead)")
+
     check_arm(any(p.startswith("R8 ") for p in r8_hit),
               "r8: missed an ask for an identifier he already supplied")
 
@@ -680,7 +937,7 @@ def main():
     # the only way this hook can ask for anything is to make Claude send a second
     # message, so enforcing them costs the owner a duplicate reply and buys a line
     # order. Advisory findings are logged and measurable, never blocked.
-    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 ", "R9 "))]
+    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 "))]
     advisory = [p for p in problems if p not in blocking]
 
     if advisory:

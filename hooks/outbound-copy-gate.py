@@ -170,6 +170,13 @@ def _self_test():
           "tool_input": {"command": "python -c \"s.users().messages().send(userId='me')\""}}, 2),
         ("MUST ALLOW the sanctioned sender",
          {"tool_name": "Bash", "tool_input": {"command": "pm-send cohen.txt"}}, 0),
+        # DEAD-BRANCH ARM 2026-08-29: the line above passes because SEND_RE
+        # misses it, so SANCTIONED_RE could be corrupted to never match and this
+        # test stayed green. This command trips SEND_RE and only the lane saves it.
+        ("MUST ALLOW a real send THROUGH the sanctioned lane",
+         {"tool_name": "Bash",
+          "tool_input": {"command": "pm-send --body cohen.txt && python -c "
+                                    "\"s.users().messages().send(userId='me')\""}}, 0),
         ("MUST ALLOW an ordinary command",
          {"tool_name": "Bash", "tool_input": {"command": "git status"}}, 0),
     ]

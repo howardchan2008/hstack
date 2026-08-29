@@ -195,6 +195,21 @@ def _self_test():
     ck(not analyse("The build failed. The test did not run. The hook does not fire."),
        "faults in SYSTEMS are not claims about a person")
     ck(not analyse("short"), "short text ignored")
+
+    # --- DEAD-BRANCH ARMS 2026-08-29. DEFICIT and DEFICIT2 are summed, so either
+    # could be corrupted to never match and the other kept the count above the
+    # threshold. One arm per branch, each unreachable by the other.
+    ck(analyse("You never replied to me. You did not call back. "
+               "You have not written since, and I am recording that."),
+       "DEFICIT: subject-verb absences alone must reach the threshold")
+    # NO REAL NAMES IN A FIXTURE. This arm first read "no reply from <a real
+    # first name>", which passed here and FAILED in the public build: the
+    # publication scrubber redacts names, and the redacted token no longer
+    # satisfied the subject pattern, so the shipped copy carried a red test.
+    # A fixture has to survive scrubbing, which means pronouns, not people.
+    ck(analyse("There was no reply from him. Absence of updates from him all week. "
+               "Lack of contact from him after that, on the record."),
+       "DEFICIT2: nominalised absences alone must reach the threshold")
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

@@ -4,14 +4,44 @@
 bash tests/run.sh
 ```
 
-Four stages, cheapest failure first.
+Five stages, cheapest failure first.
 
 | stage | what it proves |
 |---|---|
 | syntax | every hook parses. A `PreToolUse` hook with a syntax error exits non-zero on every payload, which blocks every tool call in the session |
 | parity | the repo agrees with itself: manifest, example settings, the checker's roster, the docs table, the count in the README |
-| self-tests | the four hooks that carry their own logic tests |
+| self-tests | the eleven hooks that carry their own logic tests |
 | negative control | every guard refuses what it exists to refuse, and lets ordinary work through |
+| dead branches | every regex in every hook is load-bearing: corrupt it and that hook's own self-test must notice |
+
+## Dead branches
+
+The stage above it passes while a rule has quietly stopped working, which is why
+this one exists. A self-test only proves the branches it exercises, and a branch
+nobody exercises can be deleted without any test going red. It still reads as
+coverage in every audit.
+
+So `tests/dead-branch-sweep.py` corrupts one regex at a time so that it cannot
+match, re-runs that hook's own self-test, and reports every regex the test did
+not miss.
+
+Run against the private tree this repo is built from, the first sweep found 31
+dead regexes. Some sat inside blocking rules, so those rules could have stopped
+enforcing while the suite still reported PASS. Three were not merely untested
+but unreachable: one was an exemption applied only to sentences another regex
+had already matched, and the two word lists were disjoint, so it could never
+exempt anything.
+
+Direction decides the arm, and this is the part that is easy to get wrong:
+
+- a dead **detector** under-blocks, so it needs a case that it alone catches
+- a dead **exemption** over-blocks, so it needs a case that stays clean *only*
+  because the exemption matched
+
+An arm can also pass for the wrong reason, which is worse than no arm. Two arms
+in this repo asserted the right thing and never reached the regex they were
+meant to protect, because a different check had already rejected the line. The
+sweep is what found them.
 
 ## Negative control
 

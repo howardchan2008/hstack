@@ -169,6 +169,14 @@ def _self_test():
        "data only he has is his")
     ck(not offenders(D + "- Nothing."), "empty handoff must never fire")
     ck(not offenders("DONE\n- did a thing"), "no YOUR MOVE section at all")
+
+    # --- DEAD-BRANCH ARMS 2026-08-29. HIS and EMPTY could each be corrupted to
+    # never match with this test still green: the existing "is his" arms pass
+    # because ASKS misses them, not because HIS exempts them. These reach HIS.
+    ck(not offenders(D + "- Set the new password on the wifi and tell me which one you used."),
+       "HIS: a credential line trips DOABLE and only HIS may exempt it")
+    ck(not offenders(D + "- Nothing here unless you want me to expand the list."),
+       "EMPTY: a wordy empty handoff trips ASKS and only EMPTY may exempt it")
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

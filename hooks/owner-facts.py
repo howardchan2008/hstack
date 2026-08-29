@@ -45,13 +45,30 @@ MAX_CHARS = 170
 #   "theres no default mode" needed the apostrophe-less contractions he
 #   actually types. Matching a style he does not write is matching nobody.
 ASSERT = re.compile(
-    r"^(?:well |actually |no+p?e,? |but |and |also |so )?"
-    r"(?:i (?:already |just )?(?:said|told|sent|wrote|meant|did|have|know|use|run|built|set)"
+    r"^(?:well |actually |actually, |no+p?e,? |but |and |also |so |huh,? |wait,? |i think )?"
+    r"(?:"
+    # first person, completed or held state. WIDENED 2026-08-29: the old list had
+    # said/told/sent/wrote/meant/did/have/know/use/run/built/set and missed every
+    # past-tense action he actually reports, so "i logged out and in tens of
+    # times" extracted nothing.
+    r"i (?:already |just |never |dont |don't |didnt |didn't )?"
+    r"(?:said|told|sent|wrote|meant|did|have|know|knew|use|used|run|ran|built|set|"
+    r"logged|changed|removed|rotated|paid|got|approved|tried|checked|saw|read|"
+    r"signed|bought|cancelled|deleted|installed|need|want|prefer|recall|remember)"
+    # third person state, including the contractions he types without apostrophes
     r"|(?:it|that|this|they|we|he|she|there)(?:'s|s\b| is| are| was| were| has| have| had)"
-    r"|(?:the |my |our |his |her |their |ur |your )?"
-    r"[a-z0-9_.-]+(?: [a-z0-9_.-]+){0,3} "
+    # NEGATED STATE is the highest-value class: it is precisely what contradicts
+    # an inference of mine. "li_at cant be re-minted" matched nothing before.
+    r"|(?:the |my |our |his |her |their |ur |your )?[a-z0-9_.-]+(?: [a-z0-9_.-]+){0,3} "
+    r"(?:cant|can't|cannot|doesnt|doesn't|wont|won't|isnt|isn't|arent|aren't|"
+    r"wasnt|wasn't|never|no longer|dont|don't|didnt|didn't)\b"
+    # plain state verbs, as before
+    r"|(?:the |my |our |his |her |their |ur |your )?[a-z0-9_.-]+(?: [a-z0-9_.-]+){0,3} "
     r"(?:is|are|was|were|has|have|had|runs?|ran|works?|worked|exists?|lives?|sits?|"
-    r"costs?|expired?|approved|already))",
+    r"costs?|expired?|approved|already)"
+    # existential negation, which he writes constantly
+    r"|there(?:'s| is| are)? no\b|theres no\b"
+    r")",
     re.I)
 
 # Corrections carry the most weight: he is repeating himself because I lost it once.
