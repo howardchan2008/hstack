@@ -21,6 +21,7 @@ So the manifest is the source of truth and this asserts the rest against it.
 from __future__ import annotations
 
 import argparse
+import ast
 import collections
 import json
 import re
@@ -162,6 +163,86 @@ def main() -> int:
             if got_r != want_r:
                 fails.append(f"{rel} diagram says {got_r} of {current} refuse; "
                              f"the manifest has {want_r}")
+
+    # 7. the manifest's `block` column must match how the hook actually refuses.
+    #
+    # Added 2026-08-29, after closeout-shape.py was found never to have blocked
+    # anything. The manifest said block: json for it and for item-coverage.py.
+    # item-coverage emitted {"decision": "block"} and exited 0. closeout-shape
+    # printed plain text and exited 1, which on a Stop hook is a NON-BLOCKING
+    # error, so seven rules marked blocking had refused exactly nothing. The
+    # contract was written down in this very file and nothing compared the two.
+    #
+    # Deliberately shallow: it asks whether the mechanism is PRESENT, not
+    # whether it fires. negative-control.py owns whether it fires, and it can
+    # only ask that of guards whose mechanism exists in the first place.
+    # Written narrow first, and the first draft accused three WORKING guards.
+    # That is the cry-wolf failure this suite exists to avoid, so the real
+    # mechanisms are enumerated rather than assumed:
+    #   - Stop hooks answer with {"decision": "block"}
+    #   - PreToolUse hooks answer with hookSpecificOutput.permissionDecision
+    #   - a shell hook may DELEGATE, piping stdin into a lib/ script, in which
+    #     case the mechanism lives there (probe-dedupe.sh is two lines long)
+    # The one real finding it kept: outbound-copy-gate.py was recorded as
+    # block=json and refuses by exit 2. The code was right, the manifest was
+    # wrong, and the manifest is what every reader trusts.
+    JSON_BLOCK = re.compile(r'"decision"|permissionDecision')
+    EXIT2 = re.compile(r"exit\s+2\b|sys\.exit\(2\)|return 2\b")
+
+    def code_of(path: Path) -> str:
+        """Source with comment lines removed.
+
+        The first version grepped raw text and could not fail: deleting the
+        real `"decision"` object from a hook left the WORD in the comment above
+        it, and the check stayed green against the exact bug it was written
+        for. A checker that matches prose is measuring documentation.
+        """
+        return "\n".join(ln for ln in path.read_text(errors="ignore").splitlines()
+                         if not ln.lstrip().startswith("#"))
+
+    def mechanism_text(path: Path) -> str:
+        """A shell hook may delegate; follow the delegation, by NAME not guess.
+
+        probe-dedupe.sh is two lines and pipes stdin into a lib script, so its
+        refusal lives there. Resolved from the actual assignment in the file. A
+        glob on the hook's own stem was the first attempt and it also could not
+        fail, because it found the lib again even when the hook stopped
+        pointing at it.
+        """
+        body = code_of(path)
+        for lib in re.findall(r'lib/([\w.-]+\.py)', body):
+            q = REPO / "hooks" / "lib" / lib
+            if q.is_file():
+                body += "\n" + code_of(q)
+        return body
+
+    for h in hooks:
+        p = REPO / "hooks" / h["file"]
+        if not p.is_file():
+            continue
+        body = mechanism_text(p)
+        blk = str(h.get("block", "none")).lower()
+        emits_json = bool(JSON_BLOCK.search(body))
+        if p.suffix == ".py":
+            # A TEXT match cannot tell emitting from referencing. This file's own
+            # protocol arms read obj.get("decision"), which kept the check green
+            # against the exact bug it was written for. A dict LITERAL with that
+            # key is an answer being built; a .get() is a test reading one.
+            try:
+                emits_json = any(
+                    isinstance(k, ast.Constant)
+                    and k.value in ("decision", "permissionDecision", "hookSpecificOutput")
+                    for node in ast.walk(ast.parse(p.read_text(errors="ignore")))
+                    if isinstance(node, ast.Dict)
+                    for k in node.keys)
+            except SyntaxError:
+                pass                              # the syntax stage owns that
+        if blk == "json" and not emits_json:
+            fails.append(f"{h['file']} is manifest block=json but emits no decision "
+                         f"object, so it cannot refuse")
+        if blk == "exit2" and not EXIT2.search(body):
+            fails.append(f"{h['file']} is manifest block=exit2 but never exits 2, "
+                         f"so it cannot refuse")
 
     for f in fails:
         print(f"  FAIL {f}")

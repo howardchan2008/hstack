@@ -798,6 +798,41 @@ def _self_test():
             fh.write(line("assistant", "working on it", tool=True) + "\n")
         check_arm(turn_did_work(first), "arm1: turn_did_work should be True")
         check_arm(not prior_closeout_in_turn(first), "arm1: no prior close-out expected")
+
+        # PROTOCOL ARMS, added 2026-08-29. Every other arm in this file calls
+        # check() directly, so all of them passed for weeks while main() was
+        # reporting its findings in a form the harness discards: plain text on
+        # stdout and exit 1, which on a Stop hook is a NON-BLOCKING error. The
+        # rules were correct and nothing was ever blocked. the owner found it by
+        # watching a live session defer on ten turns with R10 green.
+        #
+        # So these run the file as a SUBPROCESS, the way settings.json calls it,
+        # and assert the contract the manifest records: decision=block on
+        # stdout, exit 0. Testing what a guard FINDS is not testing that it
+        # refuses.
+        import subprocess
+
+        def _run(msg):
+            payload = json.dumps({"transcript_path": first,
+                                  "last_assistant_message": msg,
+                                  "stop_hook_active": False})
+            p = subprocess.run([sys.executable, os.path.abspath(__file__)],
+                               input=payload, capture_output=True, text=True)
+            try:
+                return p.returncode, json.loads(p.stdout or "{}")
+            except ValueError:
+                return p.returncode, {"__unparsed__": p.stdout[:120]}
+
+        rc, obj = _run("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
+                       "Nothing. Next from me, without asking: the ads script.")
+        check_arm(obj.get("decision") == "block",
+                  "protocol: a blocking finding must emit decision=block, got %r" % obj)
+        check_arm(rc == 0,
+                  "protocol: a block exits 0 (exit 1 is a non-blocking error), got %d" % rc)
+        rc2, obj2 = _run("DONE\n- Fixed the prune job: exit 0, fresh log at 16:10.\n\n"
+                         "YOUR MOVE\n- Nothing.")
+        check_arm(rc2 == 0 and not obj2.get("decision"),
+                  "protocol: a clean close-out must not block, got rc=%d %r" % (rc2, obj2))
         check_arm(bool(check("Here is what happened.\n\nDONE\n- a\n\nYOUR MOVE\n- Nothing. Finished.")),
                   "arm1: a preamble close-out should still be flagged")
 
@@ -968,8 +1003,35 @@ def main():
             pass
         return 0
 
-    print("\n".join("  - " + p for p in blocking))
-    return 1
+    # THE PROTOCOL, and it is the reason none of this ever fired. Found
+    # 2026-08-29, after the owner watched a live premier-trophy session defer on
+    # every one of ten turns with R10 shipped and green.
+    #
+    # This printed plain text to STDOUT and returned 1. On a Stop hook, exit 1
+    # is a NON-BLOCKING error: Claude Code shows stderr to the owner and lets
+    # the turn end. Stdout is not read as a decision, and stderr was empty, so
+    # the model never saw a word of it. R1, R5, R6, R8, R9, R10 and R11 were
+    # all listed as "blocking" and not one of them had ever blocked anything.
+    #
+    # item-coverage.py, a Stop hook in this same directory, had the protocol
+    # right the whole time: a JSON decision object on stdout and exit 0. The
+    # manifest even records `block: json` for BOTH. So the contract was
+    # documented, one hook honoured it, this one did not, and every test here
+    # passed because they all call check() directly and never once looked at
+    # how main() reports what check() found.
+    #
+    # Verified against the live payload before and after: plain text + exit 1
+    # produced no decision; this produces decision=block.
+    listed = "\n".join("  - " + p for p in blocking)
+    print(json.dumps({
+        "decision": "block",
+        "reason": (
+            "CLOSE-OUT SHAPE: %d blocking finding(s).\n%s\n\n"
+            "Fix the close-out and send it again. These are not style notes: "
+            "each one names work that was neither done nor handed over."
+            % (len(blocking), listed)
+        )}))
+    return 0
 
 
 if __name__ == "__main__":

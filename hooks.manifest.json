@@ -218,7 +218,7 @@
    "event": "PreToolUse",
    "matcher": "Bash|mcp__linkedin.*|mcp__whatsapp.*",
    "runner": "python3",
-   "block": "json",
+   "block": "exit2",
    "refuses": "an outbound message whose copy fails the house style lint, or a raw send that bypasses the sanctioned sender. A wrong tool call is revertible; a wrong message to a person is not."
   },
   {
