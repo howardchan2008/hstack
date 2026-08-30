@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 .nc-fixture/
+
+# Howard's private working backlog. The carryover hook reads it from the
+# repo root; it must never be published from this public repo.
+OPEN-ITEMS.md
