@@ -207,18 +207,52 @@ def main():
     current = split_items(prompt)
     save(session_id, {"last": {"items": current}, "n": int(state.get("n") or 0) + 1})
 
-    if not prev_items:
-        # Nothing to carry. Say nothing: a block that fires every turn is noise, and
-        # noise is what teaches the reader to skip the whole thing.
-        return
+    # THE CURRENT PROMPT'S OWN ITEMS, added 2026-08-30. Until now this hook only
+    # ever showed the PREVIOUS turn's items, which arrives one turn too late for
+    # the failure it is aimed at. the owner: "even if i mention more than 3 items
+    # still do all of them, i think this is necessary".
+    #
+    # WHY THIS IS THE RIGHT PLACE, measured the same day across 175 items from a
+    # week of real turns, judged by a local 27b model:
+    #     item 1 of a message   66.7% addressed        message with 2-3 items  62.0%
+    #     item 2                41.9%                  4-6 items               51.1%
+    #     item 3                61.9%                  7-10 items              40.7%
+    #     items 4-6             34.1%                  11+ items               34.6%
+    #     items 7+              32.0%
+    # Coverage halves as the list grows, and every item of a multi-item list was
+    # covered in 8 turns out of 47. The decay is by POSITION, which is what a list
+    # sitting in front of the model at the start of the turn addresses, rather than
+    # a refusal at the end of it that costs the owner a second reply.
+    #
+    # Threshold is 3 because 2-3 item messages already run at 62% and the fall is
+    # after that. A block on every two-item prompt is the noise this file's own
+    # comment warns about.
+    out = []
+    if len(current) >= 3:
+        out += [
+            f"THIS PROMPT CARRIES {len(current)} ITEMS. Measured on a week of real turns,"
+            " the 4th item onward is answered about a third of the time. Work the list,",
+            "not the first thing that caught your attention. Every line closes out:",
+            "done goes in DONE, refused or blocked goes in YOUR MOVE with the reason.",
+        ]
+        for i, item in enumerate(current, 1):
+            out.append(f"  {i}. {item}")
 
-    out = [
-        "ITEMS FROM the owner'S PREVIOUS PROMPT. A new prompt does not retire these.",
-        "Close out against every line. Finished goes in DONE, refused or blocked goes",
-        "in YOUR MOVE with the reason. Silent omission is the defect this exists for.",
-    ]
-    for i, item in enumerate(prev_items, 1):
-        out.append(f"  {i}. {item}")
+    if prev_items:
+        if out:
+            out.append("")
+        out += [
+            "ITEMS FROM the owner'S PREVIOUS PROMPT. A new prompt does not retire these.",
+            "Close out against every line. Finished goes in DONE, refused or blocked goes",
+            "in YOUR MOVE with the reason. Silent omission is the defect this exists for.",
+        ]
+        for i, item in enumerate(prev_items, 1):
+            out.append(f"  {i}. {item}")
+
+    if not out:
+        # Nothing to say. A block that fires every turn is noise, and noise is what
+        # teaches the reader to skip the whole thing.
+        return
     print("\n".join(out))
 
 

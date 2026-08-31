@@ -96,6 +96,83 @@ def load_items(session_id):
     return [str(x) for x in items if str(x).strip()]
 
 
+# THE STORE IS A SINGLE POINT OF FAILURE, and it failed silently for six days.
+# Measured 2026-08-30: the newest per-session file in ~/.claude/carryover was
+# 24 August, across hundreds of turns and five concurrent sessions, so this hook
+# had no input at all and could not have blocked anything. Nothing announced that.
+# A guard whose only input is another hook's output inherits that hook's outage,
+# and the outage is invisible from here because "no items" and "no store" look
+# identical.
+#
+# So the store is now a CACHE, not the source. The source is the transcript, which
+# the harness always writes: the last real user turn plus any mid-turn messages the
+# harness recorded as queue-operation enqueues. Same splitter, so the items are the
+# same items; only the delivery path is no longer able to disappear quietly.
+_HOOKJUNK = re.compile(
+    r"^\s*(<system-reminder|<user-prompt-submit-hook|<command-name|<local-command|"
+    r"<task-notification|\[Request interrupted|Caveat:|\[SYSTEM NOTIFICATION|"
+    r"This session is being continued)", re.I)
+
+
+def _clean_user_text(t):
+    t = re.sub(r"<system-reminder>.*?</system-reminder>", "", t, flags=re.S)
+    t = re.sub(r"UserPromptSubmit hook additional context:.*", "", t, flags=re.S)
+    return t.strip()
+
+
+def items_from_transcript(transcript_path):
+    """The current turn's request, read from the record rather than from a cache."""
+    if not transcript_path or not os.path.exists(transcript_path):
+        return []
+    try:
+        with open(transcript_path, errors="ignore") as f:
+            rows = f.readlines()[-400:]
+    except OSError:
+        return []
+    prompt, interjections = "", []
+    for ln in rows:
+        try:
+            d = json.loads(ln)
+        except Exception:
+            continue
+        if d.get("type") == "queue-operation" and d.get("operation") == "enqueue":
+            c = str(d.get("content") or "")
+            if c.strip() and not _HOOKJUNK.match(c):
+                interjections.append(c.strip())
+            continue
+        if d.get("type") != "user":
+            continue
+        c = (d.get("message") or {}).get("content")
+        if isinstance(c, str):
+            t = c
+        elif isinstance(c, list):
+            if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
+                continue
+            t = " ".join(b.get("text", "") for b in c
+                         if isinstance(b, dict) and b.get("type") == "text")
+        else:
+            continue
+        if not t.strip() or _HOOKJUNK.match(t.lstrip()):
+            continue
+        t = _clean_user_text(t)
+        if t:
+            prompt, interjections = t, []      # a newer prompt starts a new turn
+    if not prompt:
+        return []
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "prompt_items", os.path.expanduser("~/.claude/hooks/prompt-items.py"))
+        pi = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pi)
+    except Exception:
+        return []
+    out = list(pi.split_items(prompt))
+    for ij in interjections:
+        out += list(pi.split_items(ij))
+    return [x for x in out if str(x).strip()]
+
+
 # Items that are PASTED CONTENT rather than instructions. Reading the live store
 # showed the splitter capturing quoted documentation ("> Use this file to discover
 # all available pages"), which is text the user pasted, not something they asked
@@ -104,9 +181,93 @@ def load_items(session_id):
 PASTED = re.compile(r"""^\s*(?:>|\#{2,}|```|https?://|/[A-Za-z0-9_./-]{12,}|\|)""")
 
 
+# A REQUEST CARRIES A REQUESTER. Added 2026-08-30 after backtesting this hook on a
+# week of real turns: at the old threshold it would have blocked 57.4% of them, and
+# hand-checking eight firings found half were not misses at all. Two of those were
+# text the owner PASTED, not text he wrote: "You must use the share code within 21
+# days" (a Disclosure Scotland email) and "Our free in-person and online events give
+# you the knowledge" (competitor marketing copy). Both read as instructions and
+# neither was one.
+#
+# The tell is register. the owner asks in his own voice and it always carries him or
+# me: u, ur, i, we, my, pls, shd, lmk, dont, or a question mark. Third-party prose
+# quoted into a prompt does not. This is the same filter the coverage measurement
+# used, moved into the guard so the guard sees what the measurement saw.
+SPEAKER = re.compile(
+    r"\b(u|ur|urs|im|i|my|me|pls|shd|lmk|idk|coz|smt|hv|rn|dont|didnt|doesnt|"
+    r"cant|wont|isnt|wanna|gotta|ive|ill|id)\b|\?", re.I)
+# The generic second person is deliberately ABSENT. "you", "your", "we", "our",
+# "please", "need" and "want" all appear in the third-party prose he pastes:
+# "You must use the share code within 21 days", "Our free in-person and online
+# events give you the knowledge", "Please fill out the required field". Including
+# them put every one of those back through the check. What separates his voice from
+# quoted material is the informal register, not the pronoun.
+
+# Distinctive words an item needs before it can be judged at all. Was 2, which let
+# fragments like "u shd learn from it" be scored on nothing. Swept against the same
+# week: 2 fires on 57.4% of turns, 5 on 27.5%, 6 on 18.1%. Five is the knee, and the
+# cost of raising it is stated rather than hidden: an item whose whole content is
+# four ordinary words is no longer checked.
+#
+# THE TRADE, measured on the same week with the paste filter already applied, so
+# a future session does not have to re-derive it:
+#     MIN_TERMS   items judged   turns blocked
+#         3          59.8%          39.3%
+#         4          47.9%          28.5%
+#         5          36.5%          20.6%
+#         6          24.8%          12.4%
+# Five is chosen and the ceiling that comes with it is real: this guard sees about
+# a third of what he asks for. 37.3% of his items are too short to fingerprint at
+# all ("cant u just increase ur receptiveness" has four distinctive words), and
+# 26.2% are pasted material. Short asks are exactly the ones it cannot police, so
+# it is a floor under the worst omissions, never a proof that a turn was complete.
+MIN_TERMS = 5
+
+# A RAW COUNT IS THE WRONG MEASURE OF A FINGERPRINT, found the same day by running
+# the end-to-end control instead of trusting the sweep. "also rotate the
+# zeroentropy key in the keychain" and "check whether the a venture evolution
+# instance is still paired" each reduce to four distinctive words, so MIN_TERMS
+# alone threw both away, and they are about as identifiable as an item ever gets.
+# What makes an item findable is a RARE word, not many ordinary ones: a long token,
+# or one carrying a digit or a path separator. Two of those are worth more than five
+# short common words, so either route qualifies.
+RARE = re.compile(r"[0-9_./-]")
+
+# Conventional-commit subjects get pasted in constantly and read as imperatives.
+COMMITMSG = re.compile(r"^\s*(feat|fix|chore|docs|refactor|test|perf|ci|build|style)"
+                       r"(\([^)]*\))?\s*:", re.I)
+# Tokens that only appear when the owner is typing, not when he is quoting.
+INFORMAL = re.compile(r"\b(u|ur|urs|shd|pls|lmk|idk|coz|becoz|smt|hv|rn|im|ive|ill|"
+                      r"dont|didnt|doesnt|cant|wont|isnt|wanna|gotta|tf|omfg)\b", re.I)
+
+
+def fingerprinted(t):
+    if len(t) >= MIN_TERMS:
+        return True
+    return sum(1 for w in t if len(w) >= 7 or RARE.search(w)) >= 2
+
+
 def judgeable(item):
     if PASTED.search(item):
         return False
+    # His own asks are informal or start lowercase; pasted third-party prose is
+    # neither. Requiring the informal marker ALONE was too blunt: it threw away
+    # real bare imperatives like "commit + record in docs/HYPOTHESIS_REGISTER.md"
+    # and "read the tail of /tmp/pmexit.log", which carry no pronoun at all. The
+    # lowercase opener is what keeps those and still drops "You must use the share
+    # code within 21 days".
+    # A CAPITAL OPENER MUST EARN ITS WAY IN. Sampling the firings this rule added
+    # caught "Do not share my personal information" twice: pasted policy text that
+    # slipped through on the word "my". First-person pronouns are not a register
+    # tell, they are ordinary English. So a capitalised item needs a genuinely
+    # informal token (u, shd, coz, didnt), while a lowercase opener still passes on
+    # its own, which is how bare imperatives carrying only a path survive.
+    if COMMITMSG.match(item):          # "fix(security): enable webSecurity"
+        return False
+    lead = next((c for c in item if c.isalpha()), "")
+    if lead and lead.islower():
+        return True
+    return bool(INFORMAL.search(item))
     if len(item) > 220:            # a pasted paragraph, not an instruction
         return False
     return True
@@ -119,9 +280,9 @@ def uncovered(items, reply):
         if not judgeable(it):
             continue
         t = terms(it)
-        # An item with fewer than two distinctive words cannot be judged fairly:
-        # "also do that" has no fingerprint to look for.
-        if len(t) < 2:
+        # An item with too few distinctive words cannot be judged fairly:
+        # "also do that" has no fingerprint to look for. See MIN_TERMS above.
+        if not fingerprinted(t):
             continue
         if not (t & have):
             missed.append(it)
@@ -141,6 +302,10 @@ def main():
         sys.exit(0)
 
     items = load_items(session_id)
+    if len(items) < 2:
+        # Store empty or thin. Read the request from the transcript instead of
+        # concluding there was nothing to cover: see the note above load_items.
+        items = items_from_transcript(payload.get("transcript_path")) or items
     if len(items) < 2:            # a single-item prompt cannot be partially done
         sys.exit(0)
 
@@ -204,37 +369,58 @@ def _self_test():
             bad += 1
             print(f"FAIL {m}")
 
-    items = ["fix the gbrain prune job", "compare ox alpha against local models",
-             "make sure everything needing a restart is piled in"]
-    full = ("DONE\n- gbrain prune was already repaired.\n"
-            "- ox alpha scored 6/7 against local models.\n"
-            "- restart list complete, ten items piled in.")
+    # Fixtures rewritten 2026-08-30 alongside MIN_TERMS=5. The old ones were four
+    # words long, which is shorter than any item this hook now judges, so they were
+    # asserting behaviour on inputs that can no longer reach the check.
+    items = ["u shd fix the gbrain prune job and report the count",
+             "compare ox alpha against the local models on the same prompts",
+             "make sure everything needing a restart is piled into one list"]
+    full = ("DONE\n- gbrain prune repaired, count reported.\n"
+            "- ox alpha scored 6/7 against local models on the same prompts.\n"
+            "- restart list complete, ten piled into one list.")
     ck(uncovered(items, full) == [], "a covering reply must pass")
 
-    partial = "DONE\n- gbrain prune was already repaired. Nothing else to report."
+    partial = "DONE\n- gbrain prune repaired, count reported. Nothing else."
     miss = uncovered(items, partial)
     ck(len(miss) == 2, f"a reply dropping two items must flag both, got {len(miss)}")
 
-    # must NOT fire on a vague item with no fingerprint
-    ck(uncovered(["also do that"], "DONE\n- unrelated") == [],
-       "an item with no distinctive words must not fire")
-    # head matching: item says the local proxy, reply says the local proxy
-    ck(uncovered(["run the local proxy and report", "check the holdout percentage"],
-                 "DONE\n- the local proxy passes. holdout set to 10.") == [],
-       "head-of-identifier matching must count as coverage")
     # stopwords alone are not coverage
-    ck(len(uncovered(["measure the savings since day zero",
-                      "wire the openrouter key"],
+    ck(len(uncovered(["u shd measure the savings since day zero properly",
+                      "u shd wire the openrouter key into the router config"],
                      "DONE\n- the work is done and the thing was made.")) == 2,
        "stopword-only overlap must not count as coverage")
+
+    # head matching: item says the local proxy, reply says the local proxy
+    ck(uncovered(["u shd run the local proxy and report the holdout percentage"],
+                 "DONE\n- the local proxy passes, holdout percentage reported at 10.") == [],
+       "head-of-identifier matching must count as coverage")
+
+    # NEGATIVE CONTROLS. Each is a real false alarm this hook produced on the
+    # 2026-08-30 backtest before the speaker and MIN_TERMS filters existed.
+    ck(uncovered(["You must use the share code within 21 days of issue"],
+                 "DONE\n- unrelated work.") == [],
+       "third-party prose he pasted must not be judged as an item")
+    ck(uncovered(["Our free in-person and online events give you the knowledge"],
+                 "DONE\n- unrelated work.") == [],
+       "pasted marketing copy must not be judged as an item")
+    ck(uncovered(["u shd learn from it"], "DONE\n- unrelated work.") == [],
+       "an item below MIN_TERMS distinctive words must not be judged")
+
     # pasted content must never be judged: these appear in the live store
-    ck(uncovered(["> Use this file to discover all available pages",
+    ck(uncovered(["> Use this file to discover all available pages and sections",
                   "## Documentation Index",
                   "https://example.com/some/long/path"],
                  "DONE\n- unrelated work.") == [],
        "pasted/quoted lines must not be judged as items")
     ck(uncovered(["x" * 260], "DONE\n- unrelated") == [],
        "an over-long pasted paragraph must not be judged")
+
+    # POSITIVE CONTROL for the transcript fallback: the guard must still find items
+    # when the carryover store is empty, which is the outage it was fixed for.
+    ck(callable(items_from_transcript), "transcript fallback must exist")
+    ck(items_from_transcript("/nonexistent/path.jsonl") == [],
+       "a missing transcript must fail open, not raise")
+
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

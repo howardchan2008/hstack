@@ -46,6 +46,68 @@ CANCEL = re.compile(
 )
 
 
+def queued_interjections(transcript_path):
+    """His mid-turn messages that the HARNESS queued and no hook ever read.
+
+    ADDED 2026-08-30. the owner: "i still dont think that u queue tasks, i think
+    when i interject mid turn u drop the older ones and only do the new ones."
+
+    Measured before writing this. Claude Code DOES queue: every mid-turn message
+    is written to the transcript as {"type":"queue-operation","operation":
+    "enqueue","content":"<his words>"} and later dequeued. 65 of them exist in
+    the session where he said this. And grepping every hook on disk for
+    "queue-operation" returned NOTHING: the harness kept a perfect record of
+    exactly the thing he was worried about, and no guard here had ever looked at
+    it. carryover-queue read TaskCreate json (0.4% coverage), an interrupt
+    marker, and the repo backlog. Not this.
+
+    So the items are injected by name on the next prompt, and an item he raised
+    mid-turn can no longer disappear just because a newer one arrived.
+
+    Only enqueues since the last assistant PROSE reply are returned: anything
+    before that has already had a reply, whatever its quality, and re-injecting
+    the whole session would be noise.
+    """
+    if not transcript_path or not os.path.exists(transcript_path):
+        return []
+    try:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as fh:
+            if size > TAIL_BYTES:
+                fh.seek(size - TAIL_BYTES)
+                fh.readline()
+            tail = fh.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    pending, seen = [], set()
+    for ln in tail:
+        if '"type"' not in ln:
+            continue
+        try:
+            d = json.loads(ln)
+        except Exception:
+            continue
+        t = d.get("type")
+        if t == "assistant":
+            c = (d.get("message") or {}).get("content")
+            if isinstance(c, list) and any(
+                isinstance(b, dict) and b.get("type") == "text"
+                and len(b.get("text", "").strip()) > 200 for b in c
+            ):
+                pending, seen = [], set()      # a reply landed; the slate clears
+        elif t == "queue-operation" and d.get("operation") == "enqueue":
+            txt = (d.get("content") or "").strip()
+            if not txt or txt.startswith(("<task-notification", "<system-reminder",
+                                          "[SYSTEM", "<cross-session", "/")):
+                continue
+            key = txt[:120]
+            if key in seen:
+                continue
+            seen.add(key)
+            pending.append(re.sub(r"\s+", " ", txt)[:180])
+    return pending
+
+
 BACKLOG_NAMES = ("OPEN-ITEMS.md",)
 
 
@@ -180,8 +242,9 @@ def main():
     tasks = open_tasks(session_id)
     interrupted = was_interrupted(payload.get("transcript_path"))
     backlog = repo_backlog(str(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or ""))
+    queued = queued_interjections(payload.get("transcript_path"))
 
-    if not tasks and not interrupted and not backlog:
+    if not tasks and not interrupted and not backlog and not queued:
         # Nothing pending. Say nothing: a reminder that fires on every prompt is
         # noise, and noise is what taught the reader to skip the whole block.
         return
@@ -211,6 +274,16 @@ def main():
         if len(tasks) > 12:
             lines.append("    - (+%d more in the task list)" % (len(tasks) - 12))
 
+    if queued:
+        lines.append("  HE INTERRUPTED %d time(s) since your last reply, and the harness "
+                     "queued every one. These are his words, verbatim:" % len(queued))
+        for q in queued[:8]:
+            lines.append("    - %s" % q)
+        if len(queued) > 8:
+            lines.append("    - (+%d more)" % (len(queued) - 8))
+        lines.append("    A later message does not retire an earlier one. Answer ALL of "
+                     "them in this reply, or name the one you are refusing and why.")
+
     for rel, items in backlog:
         lines.append("  Owner backlog still open in %s (%d item%s):"
                      % (rel, len(items), "" if len(items) == 1 else "s"))
@@ -238,9 +311,18 @@ def main():
             "done is refused out loud against its name, never dropped quietly."
         )
 
+    # TaskCreate WAS ordered here and the tool no longer exists. It was removed
+    # on Opus 4.8 and newer, CLAUDE_CODE_ENABLE_TODO_TOOLS is unreliable, and it
+    # disconnected mid-session on 2026-08-30. An injected instruction naming a
+    # tool the model cannot call fails silently on every single prompt, which is
+    # the dead-rule class `cc-whatsnew` exists to flag, sitting inside the very
+    # block that exists to stop work being lost. Point at the store that does
+    # survive instead.
     lines.append(
-        "  Before the first tool call: TaskCreate every imperative in the new prompt, "
-        "so the next interrupt inherits it instead of losing it."
+        "  Before the first tool call: split the new prompt into its items. If a "
+        "task tool is in the live tool list, use it; if not, write anything that "
+        "outlives this session into this repo's docs/OPEN-ITEMS.md, which is what "
+        "these injected lines are read from."
     )
 
     sys.stdout.write("\n".join(lines) + "\n")
@@ -336,8 +418,12 @@ def _self_test():
     rc, out = run(prompt="now do the next thing", transcript_path=empty)
     check("ordinary prompt gets the vanish clause", "may vanish silently" in out)
 
-    # 9. the TaskCreate instruction rides along whenever the hook fires.
-    check("TaskCreate line present when firing", "TaskCreate" in out)
+    # 9. The durable-store instruction rides along whenever the hook fires.
+    #    This arm asserted "TaskCreate" in out until 2026-08-30, and it did its
+    #    job: removing the dead tool name failed the self-test immediately. The
+    #    assertion now names the store that actually survives a session ending.
+    check("durable-store line present when firing", "OPEN-ITEMS.md" in out)
+    check("no dead tool ordered in the injected block", "TaskCreate" not in out)
 
     # 10. more than 12 open items truncate with a count, rather than flooding context.
     for i in range(15):

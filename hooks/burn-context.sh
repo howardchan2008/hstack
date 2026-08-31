@@ -48,7 +48,7 @@ if [ "$RECOMPUTE_ONLY" -eq 0 ] && [ -f "$CACHE" ]; then
         /usr/bin/touch "$LOCK" 2>/dev/null
         /bin/bash "$0" --recompute >/dev/null 2>&1
         /bin/rm -f "$LOCK" 2>/dev/null
-      ) >/dev/null 2>&1 &
+      ) </dev/null >/dev/null 2>&1 &
       disown 2>/dev/null
     fi
   fi

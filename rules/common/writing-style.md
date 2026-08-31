@@ -107,3 +107,34 @@ RULES:
 - Consolidating later is expensive and lossy. The canonical audit doc for the self/relationship
   work is `~/Downloads/Personal/self-claims-verified-2026-08-22.md`
   (doc 12QdfJrXKHmWdFvAEy1PBrHdZE2M4ktVx_bIJC5T4cjs), Parts One through Thirty-One.
+
+## SHOW THE THING, AND SAY WHERE IT LIVES (added 2026-08-31, the owner directive)
+
+the owner, verbatim: *"u never shown me 47 occasions, change this behavior permanently, coz u
+often point me to smt but dont show where the document is"*.
+
+Pointing at a set without showing it is the defect. Two separate failures, both banned:
+
+1. **Naming a set and never displaying it.** I cited "47 occasions from inscription_phrases"
+   across several turns, asked him to make a mapping judgement about them, and never once
+   printed the 47. He cannot rule on a list he has not seen, so the question was unanswerable
+   and the delay was mine.
+2. **Naming a document with no path or link.** "It's in the SOT", "see the audit doc", "the
+   findings file" are not locations. Every reference to a file, doc, sheet or artifact carries
+   its full path or its URL, in the same sentence, every time. Not once at creation and never
+   again: he does not keep a session's file names in his head, and neither should he.
+
+**THE TEST, and it is what separates this from the NO FULL LISTS rule above.** That rule bans
+dumping RECORDS he is not acting on (24 lead names, ten tutors row by row). This one requires
+showing SETS HE MUST RULE ON, and the two never collide:
+
+- He has to decide about it, approve it, correct it, or check my work on it. **SHOW IT IN
+  FULL, in the reply.** A file path alone is not showing it.
+- It is background detail supporting a decision already made. Generalise it, and give the path.
+
+When the set is genuinely too large to print, show the whole shape (every distinct category
+with its count) plus the path to the rest. Never a sample presented as if it were the set.
+
+**Corollary: a question about a set arrives WITH the set.** Do not ask "which of these should
+map to plaques" in one turn and print the list in a later one. That is two round trips for a
+question that should have taken one, and it is how 賀擴展業務 sat unresolved.
