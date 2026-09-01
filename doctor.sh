@@ -47,7 +47,7 @@ prefix = Path(prefix)
 spec = json.loads(Path(manifest).read_text())["hooks"]
 
 settings_path = prefix / "settings.json"
-registered = set()
+registered = {}
 if settings_path.exists():
     try:
         s = json.loads(settings_path.read_text() or "{}")
@@ -58,7 +58,32 @@ if settings_path.exists():
         for g in groups or []:
             for h in g.get("hooks") or []:
                 cmd = h.get("command", "")
-                registered.add((event, Path(cmd.split()[-1]).name if cmd else ""))
+                # ROBUST NAME EXTRACTION, fixed 2026-09-01. This took the LAST
+                # whitespace token, which is wrong three ways seen in the wild:
+                # a quoted path ("bash \"/x/probe-dedupe.sh\"") kept the quote,
+                # a hook with an argument ("cl2-observe.sh pre") matched "pre",
+                # and either one reported an armed hook as NOT REGISTERED. False
+                # alarms are how the real outage stayed hidden: a checker that
+                # cries wolf on 11 of 38 hooks stops being read.
+                toks = [t.strip('"\'') for t in cmd.split()]
+                script = next((t for t in toks if t.endswith((".sh", ".py"))), toks[-1] if toks else "")
+                registered[(event, Path(script).name)] = cmd
+
+# CHECK 5, added 2026-09-01 after this file failed to catch an eight-day outage.
+# Some settings keys make Claude Code drop the ENTIRE hooks block of the file
+# that contains them. The file still parses, nothing warns, and checks 1 to 4
+# above all pass, because every one of them is true of a hook that never runs.
+# Measured by bisecting key by key, then 3 trials per key, every run exiting 0
+# with correct output: `fallbackModel` and `workflowSizeGuideline` each did it.
+# Both are keys the binary itself knows, so "unknown key" is not the tell.
+# Re-verify against your own version before trusting this list either way.
+POISON = ("fallbackModel", "workflowSizeGuideline")
+poisoned = [k for k in POISON if k in s]
+if poisoned:
+    print(f"doctor: SETTINGS KEY DISABLES ALL HOOKS: {', '.join(poisoned)} in {settings_path}")
+    print("doctor: every check below can still pass while nothing executes. Remove the key(s),")
+    print("doctor: then prove execution with a hook that writes a file on a real run.")
+    sys.exit(1)
 
 PAYLOAD = json.dumps({"tool_name": "Bash", "tool_input": {"command": "true"},
                       "prompt": "ok", "cwd": str(Path.cwd())})
@@ -73,11 +98,20 @@ for h in spec:
     if not path.exists():
         problems.append("not installed")
     else:
-        if not os.access(path, os.X_OK):
+        cmd = registered.get((event, name), "")
+        # An explicit interpreter in the registration makes the exec bit and the
+        # manifest's runner irrelevant: `python3 hooks/x.py` runs regardless.
+        first = cmd.split()[0].strip('"\'') if cmd else ""
+        explicit = bool(first) and not first.endswith((".sh", ".py"))
+        if not explicit and not os.access(path, os.X_OK):
             problems.append("not executable")
-        runner = h["runner"]
-        if not shutil.which(runner):
-            problems.append(f"{runner} not on PATH")
+        if explicit:
+            if not (shutil.which(first) or Path(first).exists()):
+                problems.append(f"interpreter {first} missing")
+        else:
+            runner = h["runner"]
+            if not (shutil.which(runner) or shutil.which(runner + "3")):
+                problems.append(f"{runner} not on PATH")
 
     if (event, name) not in registered:
         problems.append(f"not registered for {event}")
@@ -87,7 +121,14 @@ for h in spec:
     # into every session. Exit 2 here is a REFUSAL and therefore healthy.
     if not problems:
         try:
-            p = subprocess.run([h["runner"], str(path)], input=PAYLOAD,
+            # Run it the way settings.json actually runs it. Using the
+            # manifest's generic runner ("python") reported six armed hooks as
+            # "cannot run: No such file", because this box registers them with
+            # an absolute interpreter and has no bare `python` on PATH.
+            interp = first if explicit else (shutil.which(h["runner"])
+                                             or shutil.which(h["runner"] + "3")
+                                             or h["runner"])
+            p = subprocess.run([interp, str(path)], input=PAYLOAD,
                                capture_output=True, text=True, timeout=20)
             if p.returncode not in (0, 2) and "Traceback" in (p.stderr or ""):
                 problems.append(f"crashes on a plain payload (rc={p.returncode})")
@@ -108,7 +149,7 @@ for h in spec:
 # surfaced, never removed. It is probably yours; it is occasionally something
 # that landed from elsewhere, and the hooks block runs before every tool call.
 known = {h["file"] for h in spec}
-foreign = sorted({n for _, n in registered if n and n not in known})
+foreign = sorted({n for _, n in registered.keys() if n and n not in known})
 
 print(f"doctor: {armed} armed, {broken} not armed, prefix {prefix}")
 for line in lines:
