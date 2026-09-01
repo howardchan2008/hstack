@@ -111,9 +111,19 @@ def last_text(transcript):
 
 
 def offenders(text):
-    if "YOUR MOVE" not in text:
+    # ANCHOR THE HEADING TO A LINE START, fixed 2026-09-01 on a false positive
+    # this hook produced against a close-out whose YOUR MOVE said only
+    # "Nothing. Finished." A DONE bullet read "Empty YOUR MOVE across every repo
+    # by day: 0.0% until 3 Aug...", and an unanchored split on the first
+    # occurrence took everything after that phrase as handed-back items, so a
+    # sentence of MEASUREMENTS was reported as work parked on the owner.
+    # closeout-shape.py already anchors the same heading; this was the sibling
+    # that did not. A guard that cries wolf gets ignored, which is how the real
+    # eight-day Stop outage stayed invisible.
+    m = re.search(r"^\s*(?:\*\*|##\s*)?YOUR MOVE", text, re.M)
+    if not m:
         return []
-    tail = text.split("YOUR MOVE", 1)[1]
+    tail = text[m.end():]
     out = []
     for raw in tail.splitlines():
         line = raw.strip().lstrip("-*• ").strip()
@@ -224,6 +234,20 @@ def _self_test():
        "data only he has is his")
     ck(not offenders(D + "- Nothing."), "empty handoff must never fire")
     ck(not offenders("DONE\n- did a thing"), "no YOUR MOVE section at all")
+
+    # ANCHOR ARM, 2026-09-01. The real false positive: the phrase "YOUR MOVE"
+    # inside a DONE bullet. With an unanchored split this fires on a close-out
+    # that hands back nothing, and it dies if the ^ anchor is ever removed.
+    # The bullet AFTER the inline phrase must be verb-initial, or this arm never
+    # reaches the bug: with the old unanchored split the tail has to contain
+    # something DOABLE matches, otherwise it passes either way and is a dead
+    # branch. Checked by reverting the anchor and confirming this arm goes red.
+    ck(not offenders(
+        "DONE\n"
+        "- Empty YOUR MOVE across every repo by day: 0.0% until 3 Aug, then 5.9%.\n"
+        "- Delete the three stale rows from the config.\n"
+        "\nYOUR MOVE\n- Nothing. Finished."),
+       "a DONE bullet containing the words YOUR MOVE is not a handoff")
 
     # --- DEAD-BRANCH ARMS 2026-08-29. HIS and EMPTY could each be corrupted to
     # never match with this test still green: the existing "is his" arms pass
