@@ -193,9 +193,10 @@ PASTED = re.compile(r"""^\s*(?:>|\#{2,}|```|https?://|/[A-Za-z0-9_./-]{12,}|\|)"
 # me: u, ur, i, we, my, pls, shd, lmk, dont, or a question mark. Third-party prose
 # quoted into a prompt does not. This is the same filter the coverage measurement
 # used, moved into the guard so the guard sees what the measurement saw.
-SPEAKER = re.compile(
-    r"\b(u|ur|urs|im|i|my|me|pls|shd|lmk|idk|coz|smt|hv|rn|dont|didnt|doesnt|"
-    r"cant|wont|isnt|wanna|gotta|ive|ill|id)\b|\?", re.I)
+# SPEAKER was defined here and referenced nowhere on this box (swept 2026-09-01,
+# 2,371 files, the only two hits were this definition and its hstack copy).
+# A constant no code reads cannot be tested, which is why the dead-branch
+# sweep flagged it. Removed rather than given a fake arm.
 # The generic second person is deliberately ABSENT. "you", "your", "we", "our",
 # "please", "need" and "want" all appear in the third-party prose he pastes:
 # "You must use the share code within 21 days", "Our free in-person and online
@@ -262,15 +263,19 @@ def judgeable(item):
     # tell, they are ordinary English. So a capitalised item needs a genuinely
     # informal token (u, shd, coz, didnt), while a lowercase opener still passes on
     # its own, which is how bare imperatives carrying only a path survive.
+    # THE LENGTH GUARD USED TO SIT AFTER THE RETURN BELOW, so it never ran once.
+    # Confirmed by AST 2026-09-01: lines following `return bool(INFORMAL...)` were
+    # unreachable. The effect was a false positive in the crying-wolf direction: a
+    # pasted paragraph over 220 characters that happens to start lowercase reached
+    # `return True` and was demanded as an item the owner had asked for.
+    if len(item) > 220:            # a pasted paragraph, not an instruction
+        return False
     if COMMITMSG.match(item):          # "fix(security): enable webSecurity"
         return False
     lead = next((c for c in item if c.isalpha()), "")
     if lead and lead.islower():
         return True
     return bool(INFORMAL.search(item))
-    if len(item) > 220:            # a pasted paragraph, not an instruction
-        return False
-    return True
 
 
 def uncovered(items, reply):
@@ -414,6 +419,28 @@ def _self_test():
        "pasted/quoted lines must not be judged as items")
     ck(uncovered(["x" * 260], "DONE\n- unrelated") == [],
        "an over-long pasted paragraph must not be judged")
+
+    # ARMS THAT DIE WITH THEIR REGEX, added 2026-09-01. dead-branch-sweep flagged
+    # _HOOKJUNK, RARE, COMMITMSG and INFORMAL as corruptible with this test still
+    # green. Each arm below is a case that ONLY that regex decides, so blanking the
+    # pattern turns it red. Same class as the handoff-gate arm written the same day
+    # that passed with its own fix reverted.
+    ck(_HOOKJUNK.match("<system-reminder>do a thing</system-reminder>") is not None,
+       "_HOOKJUNK must match harness junk")
+    ck(_HOOKJUNK.match("fix the gbrain prune job and report the count") is None,
+       "_HOOKJUNK must not match a real ask")
+    ck(judgeable("fix(security): enable webSecurity on the renderer") is False,
+       "COMMITMSG must drop a pasted conventional-commit subject")
+    ck(judgeable("Rotate the deploy key and redeploy the worker") is False,
+       "a capitalised ask with no informal token is not his")
+    ck(judgeable("Rotate the deploy key coz the worker is stale") is True,
+       "INFORMAL must rescue a capitalised ask that carries his register")
+    # fingerprinted() short-circuits at MIN_TERMS, so these use FEWER tokens, all
+    # under 7 characters, which leaves RARE as the only thing that can decide them.
+    ck(fingerprinted(["a/b", "x.y"]) is True,
+       "RARE must count short path-like tokens as specific")
+    ck(fingerprinted(["we", "need", "the", "thing"]) is False,
+       "RARE must not count bare common words as specific")
 
     # POSITIVE CONTROL for the transcript fallback: the guard must still find items
     # when the carryover store is empty, which is the outage it was fixed for.
