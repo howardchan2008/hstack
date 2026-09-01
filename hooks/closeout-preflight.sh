@@ -36,6 +36,18 @@ set -uo pipefail
 
 LOG="$HOME/.claude/closeout-advisory.log"
 
+# LIVE CHECK OF THE PREVIOUS CLOSE-OUT, added 2026-09-01. Everything below this
+# block reads $LOG, and only the Stop chain ever wrote it. The Stop chain has
+# not run on this box since 2026-08-24 23:18 (measured 2026-09-01: dozens of
+# turns, zero bytes written by any Stop hook), so R10 and R12 were green,
+# self-tested and completely inert, and a restart did not restore them. This
+# runs the same rules from UserPromptSubmit, which demonstrably does fire.
+# It reads its own copy of the payload and never blocks a prompt.
+PAYLOAD="$(cat 2>/dev/null || true)"
+if [ -n "$PAYLOAD" ]; then
+  printf '%s' "$PAYLOAD" | /usr/bin/python3 "$HOME/.claude/hooks/closeout-shape.py" --advise 2>/dev/null || true
+fi
+
 if ! grep -q 'YOUR MOVE' "$HOME/CLAUDE.md" 2>/dev/null \
    && ! grep -q 'YOUR MOVE' "$HOME/.claude/CLAUDE.md" 2>/dev/null; then
   printf 'CLOSE-OUT CONTRACT, applies to the reply you are about to write:\n'

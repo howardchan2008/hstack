@@ -52,6 +52,7 @@ Bounded on purpose: only the tail of the transcript is parsed, because these
 files reach hundreds of MB and a full walk times out.
 """
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -969,6 +970,46 @@ def _self_test():
     check_arm(not check("DONE\n- shipped it\n\nYOUR MOVE\n- Nothing. Finished."),
               "arm6: a clean close-out stays clean")
 
+    # arm7/8/9, 2026-09-01: test the ADVISE PROTOCOL, not just check(). The
+    # 2026-08-29 lesson was that every arm called check() directly and none
+    # looked at how the entry point reports what check() found, so seven rules
+    # sat green for weeks having never once emitted anything.
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        tr = os.path.join(d, "t.jsonl")
+        with open(tr, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"type": "user", "message": {"content": "go"}}) + "\n")
+        state = ADVISE_STATE
+        saved = None
+        if os.path.exists(state):
+            with open(state, encoding="utf-8") as fh:
+                saved = fh.read()
+        try:
+            def run(msg):
+                p = subprocess.run(
+                    [sys.executable, os.path.abspath(__file__), "--advise"],
+                    input=json.dumps({"transcript_path": tr, "last_assistant_message": msg}),
+                    capture_output=True, text=True)
+                return p.returncode, p.stdout
+
+            defer = ("DONE\n- deleted 581 products\n\nYOUR MOVE\n- Nothing. Next actions are "
+                     "mine and need no decision from you: fix the llms.txt domain, update "
+                     "Yoast Premium, unhide the GA4 action, and queue the 132 products.")
+            rc, out = run(defer)
+            check_arm(rc == 0 and "R12 " in out, "arm7: advise emits the finding and never blocks")
+            rc2, out2 = run(defer)
+            check_arm(rc2 == 0 and out2.strip() == "", "arm8: the same close-out is reported once")
+            rc3, out3 = run("DONE\n- self-test 25/25, commit 41fa8b6 pushed.\n\nYOUR MOVE\n- Nothing. Finished.")
+            check_arm(rc3 == 0 and out3.strip() == "", "arm9: advise stays silent on a clean close-out")
+        finally:
+            if saved is None:
+                if os.path.exists(state):
+                    os.remove(state)
+            else:
+                with open(state, "w", encoding="utf-8") as fh:
+                    fh.write(saved)
+
     for f in fails:
         print("  - " + f)
     print("closeout-shape self-test: %s" % ("FAIL" if fails else "PASS"))
@@ -1049,9 +1090,79 @@ def user_supplied(transcript_path):
     return "\n".join(out)
 
 
+BLOCKING_RULES = ("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ")
+
+ADVISE_STATE = os.path.join(os.path.expanduser("~"), ".claude", "state", "closeout-advised.txt")
+
+
+def _log_advisory(lines, prefix=""):
+    try:
+        log = os.path.join(os.path.expanduser("~"), ".claude", "closeout-advisory.log")
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log, "a", encoding="utf-8") as fh:
+            for p in lines:
+                fh.write("%s | %s%s\n" % (stamp, prefix, p.replace("\n", " ")[:300]))
+    except Exception:
+        pass  # logging never gates anything
+
+
+def advise(transcript, text):
+    """UserPromptSubmit lane, added 2026-09-01. Same rules, a lane that fires.
+
+    The Stop chain on this box has been silent since 2026-08-24 23:18: this
+    session ran dozens of turns on 2026-09-01 and not one Stop hook wrote a
+    byte (auto-push.log and stop-probe.log both last written 08-31 11:16).
+    So R10 and R12 were correct, measured, green, and INERT, which is the
+    exact failure the file already documents one layer down: a guard nobody
+    calls is worse than no guard because its existence is cited as coverage.
+    A restart did not fix it either - the owner watched a restarted session
+    postpone every item.
+
+    UserPromptSubmit does fire (measured the same day: prompt-items.py,
+    carryover-queue.py and curl-router.sh all wrote today). This cannot
+    PREVENT a bad close-out, it names it on the very next turn, at the cost
+    of zero extra messages. Never blocks a prompt: it prints and returns 0.
+    """
+    if not text.strip() or not transcript:
+        return 0
+    problems = check(text, supplied=user_supplied(transcript))
+    if not problems:
+        return 0
+    blocking = [p for p in problems if p.startswith(BLOCKING_RULES)]
+    _log_advisory([p for p in problems if p not in blocking], prefix="advise | ")
+    if not blocking:
+        return 0
+    # Report each close-out ONCE. Without this the same finding is re-injected
+    # on every prompt until the next assistant message lands, which is how the
+    # freshness gate below this hook got written in the first place.
+    key = hashlib.sha1(text.strip().encode("utf-8", "replace")).hexdigest()
+    try:
+        os.makedirs(os.path.dirname(ADVISE_STATE), exist_ok=True)
+        if os.path.exists(ADVISE_STATE):
+            with open(ADVISE_STATE, encoding="utf-8") as fh:
+                if fh.read().strip() == key:
+                    return 0
+        with open(ADVISE_STATE, "w", encoding="utf-8") as fh:
+            fh.write(key)
+    except Exception:
+        pass
+    _log_advisory(blocking, prefix="advise | ")
+    print("YOUR LAST CLOSE-OUT FAILED THIS, and the owner has already read it:")
+    for p in blocking:
+        print("  - " + p)
+    print("Do not re-send that close-out. Do the named work in THIS turn, or "
+          "write it into a backlog file and name the path, or state the blocker.")
+    return 0
+
+
 def main():
     if "--self-test" in sys.argv:
         return _self_test()
+    if "--advise" in sys.argv:
+        if sys.stdin.isatty():
+            return 0
+        transcript, text = _from_stdin()
+        return advise(transcript, text)
     if len(sys.argv) >= 3:
         transcript, text = sys.argv[1], sys.argv[2]
     elif not sys.stdin.isatty():
@@ -1075,7 +1186,7 @@ def main():
     # the only way this hook can ask for anything is to make Claude send a second
     # message, so enforcing them costs the owner a duplicate reply and buys a line
     # order. Advisory findings are logged and measurable, never blocked.
-    blocking = [p for p in problems if p.startswith(("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 "))]
+    blocking = [p for p in problems if p.startswith(BLOCKING_RULES)]
     advisory = [p for p in problems if p not in blocking]
 
     if advisory:
