@@ -168,7 +168,19 @@ fi
 # numbers stay visible; this only drops the in-context line. An EMPTY cache file
 # is the mechanism, the fast path does a bare `cat "$CACHE"`, so empty == silent
 # with no change to cache semantics.
-if [ "$STATUS" = "OK" ] && [ "$IDLE_HIT" -eq 0 ]; then
+# 2026-09-02: Fable 5.1 fan-out is what empties the 5-hour window. Measured that day:
+# 14 live sessions on claude-fable-5-1 at once, each call 1.8x an Opus 5 call at list
+# price, and the window hit 100% in under 30 minutes where Opus 5 lasts the full 5h.
+# Count the live Fable sessions (the launcher argv carries --model) and say so when
+# more than two are open. Mechanically decidable, so it belongs here and not in prose.
+FABLE_LIVE=$(/bin/ps -eo command 2>/dev/null | /usr/bin/grep -c -- '--model claude-fable-5' 2>/dev/null || echo 0)
+FABLE_HIT=0
+if [ "${FABLE_LIVE:-0}" -gt 2 ]; then
+  MSG="${MSG} [FABLE-FANOUT] ${FABLE_LIVE} Fable 5.1 sessions are live on this box. Fable is the scarce thinking budget: one session at a time, effort high, write the spec and hand execution to Codex (jobq). Everything parallel runs on Opus 5 (/model claude-opus-5)."
+  FABLE_HIT=1
+fi
+
+if [ "$STATUS" = "OK" ] && [ "$IDLE_HIT" -eq 0 ] && [ "$FABLE_HIT" -eq 0 ]; then
   TMP="${CACHE}.$$"
   : > "$TMP" 2>/dev/null && /bin/mv -f "$TMP" "$CACHE" 2>/dev/null
   exit 0
