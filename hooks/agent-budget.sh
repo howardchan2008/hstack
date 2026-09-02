@@ -83,6 +83,17 @@ case "$ENTRYPOINT" in
     exit 0 ;;
 esac
 
+# Serialise count -> decide -> append. Found by the Codex nightly review 2026-09-02:
+# two hooks racing past the same below-cap count could both append and exceed the
+# box-wide or weekly cap. macOS ships no flock(1), so the lock is a mkdir, held for
+# the few ms this script runs and released on exit; if it cannot be taken in ~2s the
+# hook proceeds unlocked rather than blocking a dispatch on a stale lock dir.
+LOCK="$LEDGER.lock"
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  if /bin/mkdir "$LOCK" 2>/dev/null; then trap '/bin/rmdir "$LOCK" 2>/dev/null' EXIT; break; fi
+  /bin/sleep 0.1
+done
+
 # Count existing allowed dispatches before bypass/headless handling so every
 # audit decision reports the same current view of the ledger.
 SESSION_DAILY=0

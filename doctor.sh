@@ -48,6 +48,7 @@ spec = json.loads(Path(manifest).read_text())["hooks"]
 
 settings_path = prefix / "settings.json"
 registered = {}
+s = {}  # a missing settings.json must report "nothing registered", not NameError below (Codex review 2026-09-02)
 if settings_path.exists():
     try:
         s = json.loads(settings_path.read_text() or "{}")

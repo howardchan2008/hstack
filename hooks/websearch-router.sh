@@ -62,10 +62,12 @@ clean = lambda s: (s or "").replace("\n", " ").replace("\r", " ").strip()
 print(d.get("tool_name", ""))
 print(clean(i.get("query")))
 print(clean(i.get("url")))
+print(clean(d.get("session_id")))
 ' 2>/dev/null)
 TOOL=$(printf '%s' "$PARSED" | sed -n 1p)
 QUERY=$(printf '%s' "$PARSED" | sed -n 2p)
 URL=$(printf '%s' "$PARSED" | sed -n 3p)
+PAYLOAD_SESSION=$(printf '%s' "$PARSED" | sed -n 4p)
 [ -z "${TOOL:-}" ] && exit 0
 [ "$TOOL" = "_UNPARSEABLE_" ] && exit 0
 case "$TOOL" in WebSearch|WebFetch) ;; *) exit 0 ;; esac
@@ -222,7 +224,11 @@ fi
 # WebSearch anyway for the next question, is not making the same mistake twice.
 # The two real gates above this are untouched: those refuse a specific host or a
 # metered lane, and each of those IS a per-call decision.
-SESSION_NUDGE="$NUDGE/session-$(printf '%s' "${CLAUDE_SESSION_ID:-$PPID}" | tr -cd 'A-Za-z0-9._-')"
+# Keyed on the payload's session_id (2026-09-03): PPID is the parent of THIS hook process,
+# which for the negative-control sweep was the sweep itself, so the "once per session" file
+# outlived the test and the case reported NEVER-NUDGES against a hook that nudges correctly
+# when run by hand. The payload id is the session; the env var and PPID are fallbacks.
+SESSION_NUDGE="$NUDGE/session-$(printf '%s' "${PAYLOAD_SESSION:-${CLAUDE_SESSION_ID:-$PPID}}" | tr -cd 'A-Za-z0-9._-')"
 if [ -f "$SESSION_NUDGE" ]; then
   age=$(( $(date +%s) - $(stat -f %m "$SESSION_NUDGE" 2>/dev/null || echo 0) ))
   # Six hours, matching the probe-dedupe session window. Long enough that one
