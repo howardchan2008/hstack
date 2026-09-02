@@ -146,6 +146,15 @@ def main():
         sid = d.get("session_id") or "unknown"
     except Exception:
         return
+    # hookpaste (2026-09-02): pasted hook output is the harness quoting itself, not
+    # the owner asking. Wrapped so a missing lib can never take this hook down.
+    try:
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "lib"))
+        from hookpaste import strip_hook_paste as _strip
+        prompt = _strip(prompt) if isinstance(prompt, str) else prompt
+    except Exception:
+        pass
     if not isinstance(prompt, str) or len(prompt) < 10:
         return
     prior = load(sid)

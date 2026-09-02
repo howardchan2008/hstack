@@ -14,7 +14,7 @@ whole interface. Everything in this repo is one of those programs.
                                    ▼
                     ┌──────────────────────────────┐
    tool call ──────▶│ PreToolUse                   │  refuse: exit 2, or a
-                    │  18 hooks, 15 of them refuse │  deny object on stdout
+                    │  17 hooks, 15 of them refuse │  deny object on stdout
                     └──────────────┬───────────────┘
                           refused ─┴─▶ back to the model with the reason
                                    ▼

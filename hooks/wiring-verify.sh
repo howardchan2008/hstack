@@ -63,11 +63,14 @@ KNOWN = {
     "handoff-gate.py",
     "capability-claim-gate.py",
     "item-coverage.py",
-    "context-save.sh", "stop-justify.sh", "prettier.sh", "cl2-observe.sh",
+    "context-save.sh", "stop-justify.sh", "prettier.sh",
     "lane-guard.sh", "risk-checkpoint.sh", "agent-budget.sh",
     "session-collide.sh", "context-restore.sh", "wiring-verify.sh",
     "burn-context.sh", "state-verify-inject.sh", "auto-push.sh",
     "dash-gate.sh",   # PreToolUse Write|Edit: blocks em dashes in written output
+    # Added 2026-09-02 (hooks audit): all four were registered, on disk and
+    # deliberate, and printed REVIEW at every session start for weeks.
+    "closeout-shape.py",
     # Added 2026-08-17, same reason as the eleven below: it landed committed
     # (9210a9d) from a concurrent session and printed REVIEW at every start.
     # Added 2026-08-14. All eleven below were registered, on disk, deliberate,
@@ -119,7 +122,6 @@ KNOWN = {
                               # before a second agent starts work on it (1da63de).
     # Completed from the manifest at build time: every hook
     # this repo ships is known to the checker that verifies it.
-    "closeout-shape.py",
     "session-identity.sh",
 }
 
@@ -335,21 +337,19 @@ fi
 # --- surface breadcrumbs that nothing else reads -----------------------------------
 # Two pipelines here wrote their output where no reader existed. sot-people-refresh.sh
 # writes a LOUD failure file on every broken session end and nothing ever looked at it,
-# so it rotted silently from 2026-08-24. cl2-distill.sh distils 122MB of observations
-# into a daily friction report whose only reference in the whole tree is the script that
-# writes it. Producing a file is not value until something consumes it, which is the
-# standing rule these two were quietly breaking. Both lines below are signal-gated and
-# print nothing on a healthy day.
+# so it rotted silently from 2026-08-24. Producing a file is not value until something
+# consumes it, which is the standing rule it was quietly breaking. The line below is
+# signal-gated and prints nothing on a healthy day.
 if [ -f "$HOME/.claude/SOT-REFRESH-BROKEN.md" ]; then
   _sr="$(sed -n 's/^\*\*Reason:\*\* //p' "$HOME/.claude/SOT-REFRESH-BROKEN.md" | head -1 | cut -c1-90)"
   printf 'wiring-verify: SOT refresh is broken since %s. %s\n' \
     "$(stat -f '%Sm' -t '%Y-%m-%d' "$HOME/.claude/SOT-REFRESH-BROKEN.md")" "$_sr"
 fi
-_fr="$HOME/.claude/homunculus/staging/friction-$(date +%Y-%m-%d).md"
-if [ -f "$_fr" ]; then
-  _top="$(sed -n 's/^- (\([0-9]*\)x) `\([^`]*\)`.*/\1x \2/p' "$_fr" | head -1)"
-  [ -n "$_top" ] && printf 'wiring-verify: top friction today %s (see %s)\n' "$_top" "${_fr#$HOME/}"
-fi
+# The "top friction today" line that stood here was RETIRED 2026-09-02 (hooks audit):
+# it read the continuous-learning observer's digest, and that observer hook is gone
+# from settings.json (two hook processes on every tool call, ~140 ms, whose only reader
+# was this one line). Transcripts already record every tool call; `faults errors`
+# measures tool failures from them and is the replacement.
 
 # --- did any scheduled job fail? --------------------------------------------------
 # A silent-failure audit found most launchd jobs write logs nothing reads, so a daily

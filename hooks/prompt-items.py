@@ -197,6 +197,15 @@ def main():
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session_id or ""):
         return
     prompt = str(payload.get("prompt") or "")
+    # hookpaste (2026-09-02): pasted hook output is the harness quoting itself, not
+    # the owner asking. Wrapped so a missing lib can never take this hook down.
+    try:
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "lib"))
+        from hookpaste import strip_hook_paste as _strip
+        prompt = _strip(prompt)
+    except Exception:
+        pass
     if not prompt.strip():
         return
 

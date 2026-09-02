@@ -254,14 +254,6 @@
    "refuses": "nothing. Formats what was just written."
   },
   {
-   "file": "cl2-observe.sh",
-   "event": "PreToolUse",
-   "matcher": "*",
-   "runner": "bash",
-   "block": "none",
-   "refuses": "nothing. Records what tools were called so later claims about behaviour can be checked against a log rather than memory."
-  },
-  {
    "file": "item-coverage.py",
    "event": "Stop",
    "runner": "python",

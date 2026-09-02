@@ -57,6 +57,13 @@ def run(script: Path, payload: str, env_extra: dict | None = None):
     for v in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
               "ALL_PROXY", "all_proxy"):
         env.pop(v, None)
+    # The session id must come from the CASE, never from the shell running the
+    # suite. session-identity.sh prefers COLLIDE_SESSION / CLAUDE_SESSION_ID over
+    # the payload, so inside a live session every case inherited THAT session's
+    # ledgers: on 2026-09-02 agent-budget/allow reported a false positive because
+    # the session running the tests had spent its own per-session agent cap.
+    for v in ("COLLIDE_SESSION", "CLAUDE_SESSION_ID"):
+        env.pop(v, None)
     if env_extra:
         env.update(env_extra)
     runner = "bash" if script.suffix == ".sh" else sys.executable
@@ -185,7 +192,10 @@ def cases():
     # --- agent-budget: refuses with JSON, not exit 2 ------------------------
     c += [
         dict(name="agent-budget/allow", script="agent-budget.sh", expect="allow",
-             payload=pre("Agent", {"description": "one small lookup"}),
+             # Fresh id per run: the per-session ledger is keyed on it, and a fixed
+             # id would spend the cap after eight runs of this suite.
+             payload=pre("Agent", {"description": "one small lookup"},
+                         session_id=f"nc-agent-{os.getpid()}"),
              why="a single dispatch inside budget. The block arm needs a spent budget, "
                  "which is state this suite will not fake: see docs/TESTING.md"),
     ]

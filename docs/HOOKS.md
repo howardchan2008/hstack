@@ -227,17 +227,6 @@ file behind it.
 Formats what was just written, so a diff never mixes a real change with a
 whitespace change.
 
-### `cl2-observe.sh` &nbsp;·&nbsp; `*` &nbsp;·&nbsp; reporter
-
-Records which tools were actually called. It refuses nothing, and it exists so
-that a later claim about the agent's own behaviour can be checked against a log
-instead of against its memory of the session. Several corrections in
-[CORRECTIONS.md](CORRECTIONS.md) were only provable because this file existed;
-the agent's recollection of what it had run disagreed with the record more than
-once.
-
----
-
 ## SessionStart
 
 ### `wiring-verify.sh`

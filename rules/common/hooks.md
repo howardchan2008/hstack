@@ -42,3 +42,21 @@ pre-removal and prove nothing about today. The defect this section exists to pre
 rule ordering a tool the model cannot call: it fails silently every turn instead of once,
 which is why the previous version survived so long. `cc-whatsnew` now flags that class as
 DEAD-RULE.
+
+## Redundancy audit, 2026-09-02
+
+Every hook entry was measured (blocks and idle from `guard-verdict`, wall time per hook on a
+benign payload, and a reader for every artifact a hook writes). Full table and verdicts:
+`~/.claude/reference/hooks-audit-2026-09-02.md`. What it changed:
+
+- One principle lives in one hook. The deferral check (work promised to a later turn) was in
+  three Stop hooks with three disjoint phrase lists; it is now closeout-shape R10 only, and
+  stop-justify keeps the git facts no regex can see.
+- A hook that writes what nothing reads is removed, not tuned. cl2-observe ran twice per tool
+  call and fed a digest with one reader; gone, with that reader.
+- A guard that can only act on one keyword carries `"if": "Bash(*keyword*)"` so the harness
+  skips the spawn. Verified live: compound commands match per part, wildcards anywhere work.
+- Pasted hook output is never mined for items or facts: `hooks/lib/hookpaste.py`, wired into
+  every UserPromptSubmit injector that reads the prompt.
+- Before adding a hook, run the audit's three questions: which existing hook owns this
+  principle, what does it cost per call, and who reads what it writes.
