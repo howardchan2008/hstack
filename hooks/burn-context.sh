@@ -173,7 +173,7 @@ fi
 # price, and the window hit 100% in under 30 minutes where Opus 5 lasts the full 5h.
 # Count the live Fable sessions (the launcher argv carries --model) and say so when
 # more than two are open. Mechanically decidable, so it belongs here and not in prose.
-FABLE_LIVE=$(/bin/ps -eo command 2>/dev/null | /usr/bin/grep -c -- '--model claude-fable-5' 2>/dev/null || echo 0)
+FABLE_LIVE=$(/bin/ps -eo command 2>/dev/null | /usr/bin/grep -c -- '[-]-model claude-fable-5' 2>/dev/null || echo 0)  # [-] so grep's own argv is not counted
 FABLE_HIT=0
 if [ "${FABLE_LIVE:-0}" -gt 2 ]; then
   MSG="${MSG} [FABLE-FANOUT] ${FABLE_LIVE} Fable 5.1 sessions are live on this box. Fable is the scarce thinking budget: one session at a time, effort high, write the spec and hand execution to Codex (jobq). Everything parallel runs on Opus 5 (/model claude-opus-5)."
