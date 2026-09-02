@@ -365,7 +365,18 @@ DEFER = re.compile(
     r"(?:here |left |that remain |from here )?(?:are|is) (?:all )?"
     r"(?:mine|on me|for me|my own)\b"
     r"|\bnot done:(?!\s*$)"
-    r"|\boutstanding (?:from|on) me\b|\bstill (?:owe|owed) you\b",
+    r"|\boutstanding (?:from|on) me\b|\bstill (?:owe|owed) you\b"
+    # MOVED HERE 2026-09-02 from handoff-gate.py (PARKED). the owner: "why are
+    # there 3 stop hooks in a row isnt that redundant". Measured before the move:
+    # this DEFER missed all three of PARKED's positives ("I keep looking for",
+    # "I'll continue digging", "I will report back"), so the two blacklists were
+    # covering each other's holes from two files with two banners. One principle
+    # (work deferred to a turn he must pay for) now lives in one rule, with the
+    # DEFER_OK / DEFER_QUOTE exemptions it never had over there.
+    r"|\bi(?:'ll|'m going to| will| am going to| keep| continue)\s+"
+    r"(?:keep\s+|going\s+to\s+|now\s+)?"
+    r"(?:look|search|dig|hunt|chase|investigat|continu|resume|work on|"
+    r"report back|come back|circle back|follow up|pick (?:this|it) up)",
     re.I,
 )
 # Recorded somewhere durable, or refused with a stated blocker. Either is honest.
@@ -788,6 +799,22 @@ def _self_test():
     check_arm(not any(p.startswith("R10 ") for p in
                       check("DONE\n- Footer now reads a venture.com, verified live.\n\nYOUR MOVE\n- Nothing.")),
               "R10 false-positive on a clean close-out")
+
+    # PARKED arms, moved 2026-09-02 from handoff-gate.py with the regex. The
+    # three positives are the exact lines that hook was built on (2026-08-24,
+    # "I keep looking for the stop failure"); the two negatives pin the
+    # first-person shapes that are NOT a promise of future work.
+    for parked_line in ("- Nothing. I keep looking for the stop failure.",
+                        "- I'll continue digging into the abort path.",
+                        "- I will report back once the run lands."):
+        check_arm(any(p.startswith("R10 ") for p in
+                      check("DONE\n- x\n\nYOUR MOVE\n" + parked_line)),
+                  "R10 missed a first-person promise (PARKED half dead): %r" % parked_line)
+    for fine_line in ("- I keep the local proxy in the path; it saves 20-30%.",
+                      "- Restart the sessions yourself; I cannot press the button."):
+        check_arm(not any(p.startswith("R10 ") for p in
+                          check("DONE\n- x\n\nYOUR MOVE\n" + fine_line)),
+                  "R10 false-positive on first-person prose: %r" % fine_line)
 
     # IDENT arm. R8 has two branches and only the second was ever reached, so
     # IDENT could be corrupted to never match with this test green. Here the

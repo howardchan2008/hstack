@@ -64,32 +64,14 @@ HIS = re.compile(
 
 EMPTY = re.compile(r"^\s*[-*]?\s*(nothing|none)\b", re.I)
 
-# A PROMISE TO WORK LATER IS WORK NOT DONE. The owner, 2026-08-31, after a
-# close-out that answered "keep looking for what's eating the stop" with
-# "YOUR MOVE: Nothing. I keep looking": "why did u stop before looking for
-# the stop failure".
-#
-# item-coverage.py cannot catch this by construction: the item DID get a line
-# in the close-out, so coverage is satisfied. The line just deferred the work
-# to a turn that the owner has to pay for by prompting again. The whole point
-# of a background-capable turn is that it continues on its own, so a promise
-# to resume is a turn ended early, not a plan.
-PARKED = re.compile(
-    r"\bi(?:'ll|'m going to| will| am going to| keep| continue)\s+"
-    r"(?:keep\s+|going\s+to\s+|now\s+)?"
-    r"(look|search|dig|hunt|chase|investigat|continu|resume|work on|"
-    r"report back|come back|circle back|follow up|pick (?:this|it) up)",
-    re.I)
-
-
-def parked(text):
-    """First-person promises of future work anywhere in the close-out."""
-    out = []
-    for raw in text.splitlines():
-        line = raw.strip().lstrip("-*\u2022 ").strip()
-        if PARKED.search(line):
-            out.append(line[:120])
-    return out[:5]
+# The PARKED rule ("I keep looking", "I'll continue digging": a promise to work
+# later is work not done) lived here from 2026-08-31 to 2026-09-02. MOVED to
+# closeout-shape.py R10. the owner: "why are there 3 stop hooks in a row isnt that
+# redundant". Measured: R10 there missed all three of PARKED's positives and
+# PARKED missed all of R10's, so two disjoint blacklists were enforcing one
+# principle from two files with two banners. One rule, one place, with the
+# DEFER_OK / DEFER_QUOTE exemptions this copy never had. This hook now does
+# the one thing only it does: YOUR MOVE items that are mine to do.
 
 
 def last_text(transcript):
@@ -148,8 +130,7 @@ def main():
         sys.exit(0)
     text = last_text(tp)
     bad = offenders(text)
-    stalled = parked(text)
-    if not bad and not stalled:
+    if not bad:
         sys.exit(0)
 
     sid = (payload.get("session_id") or "x")[:36]
@@ -165,18 +146,6 @@ def main():
         open(stamp, "w").write(str(n + 1))
     except Exception:
         pass
-
-    if stalled and not bad:
-        listed = "\n".join(f'  - "{b}"' for b in stalled)
-        print(json.dumps({"decision": "block", "reason":
-            "YOU PROMISED THE WORK INSTEAD OF DOING IT. These lines defer work "
-            f"the owner asked for to a later turn:\n{listed}\n\n"
-            "The turn does not have to end for you to keep going, and a "
-            "background job re-invokes you when it finishes. Ending here makes "
-            "him prompt again to buy the work he already asked for.\n"
-            "Do the next concrete step now. If it genuinely cannot be done, "
-            "name the blocker in one line rather than promising to continue."}))
-        sys.exit(0)
 
     listed = "\n".join(f"  - \"{b}\"" for b in bad)
     print(json.dumps({"decision": "block", "reason":
@@ -201,19 +170,8 @@ def _self_test():
 
     D = "DONE\n- did a thing\n\nYOUR MOVE\n"
 
-    # parked-promise rule
-    ck(parked("YOUR MOVE\n- Nothing. I keep looking for the stop failure."),
-       "I-keep-looking must fire")
-    ck(parked("- I'll continue digging into the abort path."),
-       "I'll-continue must fire")
-    ck(parked("- I will report back once the run lands."),
-       "I-will-report-back must fire")
-    ck(not parked("- I keep the local proxy in the path; it saves 20-30%."),
-       "I-keep-<noun> must NOT fire")
-    ck(not parked("- Nothing. Finished."),
-       "clean close-out must NOT fire")
-    ck(not parked("- Restart the sessions yourself; I cannot press the button."),
-       "genuine blocker must NOT fire")
+    # The parked-promise arms moved to closeout-shape.py --self-test (R10) on
+    # 2026-09-02 together with the rule they exercised.
     # real examples from the measured sample: all must fire
     ck(offenders(D + "- Optional, whenever you want: tell me where gbrain dumps "
                      "should live and I will repair transcript-prune."),
