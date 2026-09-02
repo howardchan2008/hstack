@@ -57,9 +57,11 @@ concurrently. Never send them one at a time and wait.
 That is a batching rule, and it is the whole of it. It used to read "ALWAYS use parallel
 Task execution", with a worked example of three agents on one question and a five-role
 review panel below it, which is a spending instruction wearing a latency instruction's
-clothes. The agent budget breaker blocks at 8 dispatches/day and 80/7d
-(`reference_agent_budget_hooks`), so that panel alone is most of a day. Cost is per agent,
-not per message, and the ceiling is real.
+clothes. The agent budget breaker blocks at 8 dispatches per SESSION per 24h, 40 across the
+box per 24h, 200 per 7d (changed 2026-09-02: the old box-wide 8/day let one session lock out
+every other session for a day; 193 of 406 lifetime attempts had been denied). Cost is per
+agent, not per message, and the ceiling is real. Sub-agents inherit the parent model: on a
+Fable 5.1 session pass `model: sonnet` or `haiku` to a worker.
 
 Before a second agent: name the independent subtree it owns. Two agents whose scope
 overlaps return the same findings twice at twice the price, which is how one audit spent
