@@ -22,7 +22,20 @@ set -uo pipefail
 
 [ -f /tmp/burn-context-disabled ] && exit 0
 
-CACHE=/tmp/burn-context-cache.json
+# Resolve the same session bucket as agent-budget.sh before selecting the
+# cache. A shared cache would show one session another session's count.
+INPUT=$(cat 2>/dev/null || echo "{}")
+. "$(dirname "${BASH_SOURCE[0]}")/session-identity.sh"
+if [ -n "${BURN_CONTEXT_SESSION:-}" ]; then
+  SESSION="$BURN_CONTEXT_SESSION"
+else
+  guild_resolve_session_id <<<"$INPUT"
+  SESSION="$SESSION_ID"
+fi
+[ -z "$SESSION" ] && SESSION="unknown"
+SESSION_KEY=$(printf '%s' "$SESSION" | /usr/bin/sed 's/[^A-Za-z0-9_.-]/_/g')
+
+CACHE="/tmp/burn-context-cache-${SESSION_KEY}.json"
 LOCK=/tmp/burn-context-refresh.lock
 TTL=300          # seconds: cache considered fresh
 LOCK_STALE=600   # seconds: abandoned refresh lock is ignored
@@ -46,7 +59,7 @@ if [ "$RECOMPUTE_ONLY" -eq 0 ] && [ -f "$CACHE" ]; then
     if [ ! -f "$LOCK" ] || [ "$STALE_LOCK" -eq 1 ]; then
       (
         /usr/bin/touch "$LOCK" 2>/dev/null
-        /bin/bash "$0" --recompute >/dev/null 2>&1
+        BURN_CONTEXT_SESSION="$SESSION" /bin/bash "$0" --recompute >/dev/null 2>&1
         /bin/rm -f "$LOCK" 2>/dev/null
       ) </dev/null >/dev/null 2>&1 &
       disown 2>/dev/null
@@ -56,7 +69,7 @@ if [ "$RECOMPUTE_ONLY" -eq 0 ] && [ -f "$CACHE" ]; then
 fi
 
 # ---------- slow path: actual recompute ----------
-# Count dispatches by JSONL line timestamp (not file mtime, sessions stay open)
+# Count dispatches by ledger timestamp (not file mtime, sessions stay open).
 NOW_EPOCH=$(now)
 DAY_AGO=$(( NOW_EPOCH - 86400 ))
 WEEK_AGO=$(( NOW_EPOCH - 7 * 86400 ))
@@ -69,48 +82,72 @@ WEEK_AGO=$(( NOW_EPOCH - 7 * 86400 ))
 # WEEKLY-CAP-HIT and "Agent tool is BLOCKED" while the enforcer was allowing
 # every dispatch. Read the same file the enforcer writes. One source of truth.
 # Bonus: O(1) ledger read replaces the multi-GB scan described in the header.
-LEDGER="$HOME/.claude/agent-dispatch.log"
-DAILY=0
+LEDGER="${AGENT_BUDGET_LEDGER:-$HOME/.claude/agent-dispatch.log}"
+SESSION_DAILY=0
+BOX_DAILY=0
 WEEKLY=0
 if [ -f "$LEDGER" ]; then
-  COUNTS=$(/usr/bin/awk -F'\t' -v d="$DAY_AGO" -v w="$WEEK_AGO" \
-    '{ if ($1+0 > w) wk++; if ($1+0 > d) dy++ } END { printf "%d %d", dy+0, wk+0 }' "$LEDGER" 2>/dev/null)
-  DAILY=${COUNTS%% *}
-  WEEKLY=${COUNTS##* }
+  COUNTS=$(/usr/bin/awk -F'\t' -v d="$DAY_AGO" -v w="$WEEK_AGO" -v s="$SESSION" \
+    '{ if ($1+0 > w) wk++; if ($1+0 > d) { box++; if ($2 == s) dy++ } } \
+     END { printf "%d %d %d", dy+0, box+0, wk+0 }' "$LEDGER" 2>/dev/null)
+  SESSION_DAILY=$(printf '%s' "$COUNTS" | awk '{print $1}')
+  BOX_DAILY=$(printf '%s' "$COUNTS" | awk '{print $2}')
+  WEEKLY=$(printf '%s' "$COUNTS" | awk '{print $3}')
 fi
 
-DAILY=${DAILY:-0}
+SESSION_DAILY=${SESSION_DAILY:-0}
+BOX_DAILY=${BOX_DAILY:-0}
 WEEKLY=${WEEKLY:-0}
 
 # Caps (must match agent-budget.sh defaults)
 DAILY_CAP="${AGENT_BUDGET_DAILY:-8}"
-WEEKLY_CAP="${AGENT_BUDGET_7D:-80}"
+BOX_DAILY_CAP="${AGENT_BUDGET_BOX_DAILY:-40}"
+WEEKLY_CAP="${AGENT_BUDGET_7D:-200}"
+
+if [ "$SESSION" = "unknown" ]; then
+  DISPLAY_DAILY="$BOX_DAILY"
+  DISPLAY_DAILY_CAP="$BOX_DAILY_CAP"
+else
+  DISPLAY_DAILY="$SESSION_DAILY"
+  DISPLAY_DAILY_CAP="$DAILY_CAP"
+fi
 
 # Status indicator
 STATUS="OK"
-[ "$DAILY" -ge "$DAILY_CAP" ] && STATUS="DAILY-CAP-HIT"
-[ "$WEEKLY" -ge "$WEEKLY_CAP" ] && STATUS="WEEKLY-CAP-HIT"
+if [ "$SESSION" != "unknown" ] && [ "$SESSION_DAILY" -ge "$DAILY_CAP" ]; then
+  STATUS="PER-SESSION-CAP-HIT"
+elif [ "$BOX_DAILY" -ge "$BOX_DAILY_CAP" ]; then
+  STATUS="BOX-CAP-HIT"
+elif [ "$WEEKLY" -ge "$WEEKLY_CAP" ]; then
+  STATUS="WEEKLY-CAP-HIT"
+fi
 # Yellow zone: 75% of cap
 DAILY_WARN=$(( DAILY_CAP * 3 / 4 ))
+BOX_DAILY_WARN=$(( BOX_DAILY_CAP * 3 / 4 ))
 WEEKLY_WARN=$(( WEEKLY_CAP * 3 / 4 ))
 if [ "$STATUS" = "OK" ]; then
-  [ "$DAILY" -ge "$DAILY_WARN" ] && STATUS="NEAR-DAILY"
+  [ "$SESSION" != "unknown" ] && [ "$SESSION_DAILY" -ge "$DAILY_WARN" ] && STATUS="NEAR-PER-SESSION"
+  [ "$BOX_DAILY" -ge "$BOX_DAILY_WARN" ] && STATUS="NEAR-BOX"
   [ "$WEEKLY" -ge "$WEEKLY_WARN" ] && STATUS="NEAR-WEEKLY"
 fi
 
 # Compose message
-MSG="[BURN-BUDGET] Agent dispatches: ${DAILY}/${DAILY_CAP} today, ${WEEKLY}/${WEEKLY_CAP} last 7d. Status: ${STATUS}."
+if [ "$SESSION" = "unknown" ]; then
+  MSG="[BURN-BUDGET] Agent dispatches: unknown session, ${BOX_DAILY}/${BOX_DAILY_CAP} box-wide in the last 24h, ${WEEKLY}/${WEEKLY_CAP} last 7d. Status: ${STATUS}."
+else
+  MSG="[BURN-BUDGET] Agent dispatches: ${SESSION_DAILY}/${DAILY_CAP} this session in the last 24h, ${BOX_DAILY}/${BOX_DAILY_CAP} box-wide in the last 24h, ${WEEKLY}/${WEEKLY_CAP} last 7d. Status: ${STATUS}."
+fi
 case "$STATUS" in
-  "DAILY-CAP-HIT"|"WEEKLY-CAP-HIT")
+  "PER-SESSION-CAP-HIT"|"BOX-CAP-HIT"|"WEEKLY-CAP-HIT")
     MSG="${MSG} Agent tool is BLOCKED by agent-budget.sh. Use bash/grep/Read/WebSearch/~/bin/codex-review/~/bin/ai-do instead. Override once: touch /tmp/agent-budget-bypass."
     ;;
-  "NEAR-DAILY"|"NEAR-WEEKLY")
+  "NEAR-PER-SESSION"|"NEAR-BOX"|"NEAR-WEEKLY")
     MSG="${MSG} Approaching cap: prefer bash + WebSearch + codex-review over Agent dispatch this turn."
     ;;
 esac
 
 # Statusline cache: short string read by caveman-statusline.sh (fast, no recompute).
-printf 'A:%s/%s W:%s/%s' "$DAILY" "$DAILY_CAP" "$WEEKLY" "$WEEKLY_CAP" > "$HOME/.claude/.burn-statusline-cache" 2>/dev/null
+printf 'A:%s/%s B:%s/%s W:%s/%s' "$DISPLAY_DAILY" "$DISPLAY_DAILY_CAP" "$BOX_DAILY" "$BOX_DAILY_CAP" "$WEEKLY" "$WEEKLY_CAP" > "$HOME/.claude/.burn-statusline-cache" 2>/dev/null
 
 IDLE_HIT=0
 # Idle-burn guard: overnight (local 00:00 to 08:00) + no commit across ~/repos in last 3h

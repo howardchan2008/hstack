@@ -83,7 +83,56 @@ VERBS = re.compile(
     r"brew|docker|gh)(?![\w-])"
 )
 PATHY = re.compile(r"[~/][\w./*@+-]{3,}")
+# Files named WITHOUT a leading ~ or /, the normal shape after `cd dir &&`. PATHY
+# never saw them, so `cd .../wa && fold 04_Amer.txt` and `cd .../wa && fold
+# 05_Joel.txt` both keyed on the cd target `wa`, and five distinct first reads of
+# five files registered as looks #4 to #8 at one subject (2026-09-02). A file
+# token needs a known extension so prose and numbers do not become subjects.
+RELFILE = re.compile(
+    r"(?<![\w/.~-])((?:[\w.@+*-]+/)*[\w@+*-]+\.(?:txt|md|py|sh|zsh|json|jsonl|csv|tsv|"
+    r"log|ya?ml|toml|html?|js|ts|tsx|sql|db|pdf|png|jpe?g|parquet|plist))(?![\w./-])"
+)
+# The `cd` target is where the files live, never what is being read.
+CD_TARGET = re.compile(r"(?<![\w-])cd\s+([~/][\w./*@+-]+|[\w.@+-]+)")
 NOISE = {"dev", "null", "tmp", "usr", "bin", "etc", "var", "Users", "<github-user>"}
+
+
+def _slice_suffix(cmd):
+    """Return a stable identity for an explicit line or byte slice, if any."""
+    sed = re.search(
+        r"\bsed\b[^|;&]*?\s-n\s+(['\"])(\d+)(?:\s*,\s*(\d+))?p\1",
+        cmd,
+    ) or re.search(
+        r"\bsed\b[^|;&]*?\s-n\s+(\d+)(?:\s*,\s*(\d+))?p\b",
+        cmd,
+    )
+    if sed:
+        groups = sed.groups()
+        start = groups[-2] if len(groups) == 3 else groups[0]
+        end = groups[-1] if len(groups) == 3 else groups[1]
+        return "slice:%s-%s" % (start, end or start)
+
+    stream = re.search(
+        r"\b(head|tail)\s+(?:-n\s+([+]?[0-9]+)|-c\s+([0-9]+)|-([+]?[0-9]+))\b",
+        cmd,
+    )
+    if stream:
+        command, lines, bytes_, shorthand = stream.groups()
+        kind, value = ("c", bytes_) if bytes_ else ("n", lines or shorthand)
+        return "slice:%s-%s-%s" % (command, kind, value)
+
+    if re.search(r"\bawk\b", cmd):
+        numbers = re.findall(
+            r"(?:NR\s*(?:>=|<=|==|>|<)\s*(\d+)|"
+            r"(\d+)\s*(?:>=|<=|==|>|<)\s*NR)",
+            cmd,
+        )
+        values = sorted({value for pair in numbers for value in pair if value})
+        if values:
+            return "slice:%s" % "-".join(values)
+    return None
+
+
 # A CONTAINER IS NOT A SUBJECT. Added 2026-08-24 after this guard blocked its own
 # author twice on genuinely different questions. `grep` is deliberately not a
 # subject verb, so `cd ~/.claude && grep X reference/` yields no verb at all and
@@ -113,6 +162,10 @@ def fingerprint(cmd):
         leaf = re.sub(r"[0-9]{4,}", "N", leaf)  # dated files are the same subject
         if leaf and leaf not in NOISE and not leaf.startswith("-"):
             leaves.append(leaf)
+    relfiles = [re.sub(r"[0-9]{4,}", "N", f.split("/")[-1]) for f in RELFILE.findall(cmd)]
+    if relfiles:
+        cd_leaves = {t.rstrip("/").split("/")[-1] for t in CD_TARGET.findall(cmd)}
+        leaves = [l for l in leaves if l not in cd_leaves] + relfiles
     specific = [l for l in set(leaves) if l not in CONTAINERS]
     # No subject verb AND nothing but container directories means this command
     # has not told us what it is about. Fall back to the raw text, which dedupes
@@ -120,7 +173,9 @@ def fingerprint(cmd):
     if not verbs and not specific:
         return re.sub(r"\s+", " ", cmd.strip())[:48]
     key = "|".join(verbs + sorted(specific or set(leaves))[:3])
-    return key or re.sub(r"\s+", " ", cmd.strip())[:48]
+    key = key or re.sub(r"\s+", " ", cmd.strip())[:48]
+    suffix = _slice_suffix(cmd)
+    return "%s|%s" % (key, suffix) if suffix else key
 
 
 def load(path):
@@ -409,15 +464,56 @@ def self_test():
     # TOO FINE: the same subject asked three ways must still collapse to one.
     same = {fingerprint(c) for c in (
         "ps -o pcpu= -p 4242",
-        "ps -o pcpu= -p 4242 | head -1",
+        "ps -o pcpu= -p 4242 | cut -c1-80",
         "ps -o pcpu=,rss= -p 4242 | awk '{print $1}'",
     )}
     if len(same) != 1:
         fails.append(f"one subject asked three ways split into {len(same)}: {same}")
     # Two reads of ONE file through different pipelines are one subject.
     if fingerprint("sed -n '1,40p' ~/.claude/bin/gen-sot-digest.sh") != \
-       fingerprint("grep -n VENTURES ~/.claude/bin/gen-sot-digest.sh"):
+       fingerprint("sed -n \"1,40p\" ~/.claude/bin/gen-sot-digest.sh | cut -c1-80"):
         fails.append("two reads of one file did not collapse")
+    # Distinct files read after ONE `cd` are distinct subjects; the cd target is
+    # only where they live. 2026-09-02: five first reads under one scratch dir
+    # were blocked as looks #4 to #8 at the directory.
+    per_file = {fingerprint(c) for c in (
+        "cd /tmp/x/wa && fold -s -w 200 04_Amer.txt",
+        "cd /tmp/x/wa && fold -s -w 200 05_Joel.txt",
+        "cd /tmp/x/wa && cat 06_Devika.txt 08_Alessandro.txt",
+    )}
+    if len(per_file) != 3:
+        fails.append(f"distinct files after one cd collapsed: {per_file}")
+    if fingerprint("cd /tmp/x/wa && fold -s -w 200 04_Amer.txt") != \
+       fingerprint("cd /tmp/x/wa && cat 04_Amer.txt | head"):
+        fails.append("one bare file read two ways did not collapse")
+    # Explicit slices are distinct subjects, while repeating one exact slice
+    # remains a repeat.  This is the paging contract for long files.
+    sliced = (
+        "sed -n '100,137p' decisions/x.md | cut -c1-300",
+        "sed -n '247,295p' decisions/x.md | cut -c1-300",
+        "sed -n '113,175p' decisions/x.md | cut -c1-300",
+        "sed -n '295,332p' decisions/x.md | cut -c1-300",
+        "unzip -p \"$Z\" _chat.txt | sed -n '46,85p' | cut -c1-200",
+    )
+    if len({fingerprint(c) for c in sliced}) != 5:
+        fails.append("distinct line slices collapsed")
+    if fingerprint("sed -n '1,40p' f.md") != fingerprint("sed -n '1,40p' f.md"):
+        fails.append("identical line slice did not repeat")
+    if fingerprint("git status --short") != "git":
+        fails.append("slice-free legacy key changed")
+    slice_forms = (
+        "sed -n \"1,40p\" f.md",
+        "sed -n 1,40p f.md",
+        "head -n 40 f.md",
+        "head -40 f.md",
+        "head -c 40 f.md",
+        "tail -n 40 f.md",
+        "tail -n +40 f.md",
+        "tail -40 f.md",
+        "awk 'NR>=1 && NR<=40' f.md",
+    )
+    if any(_slice_suffix(c) is None for c in slice_forms):
+        fails.append("a supported slice syntax form was not recognised")
     # A mutation is never a probe, whatever it mentions. Same test the main
     # path uses, so this cannot pass while the live check drifts.
     if not MUTATION.search("git -C ~/.claude commit -m x"):

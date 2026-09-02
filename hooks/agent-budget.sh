@@ -1,13 +1,22 @@
 #!/bin/bash
 # agent-budget.sh: PreToolUse hook on Agent dispatches.
-# Blocks Agent invocations when daily/weekly dispatch count exceeds threshold,
-# unless a bypass sentinel is present.
+# Blocks Agent invocations when the per-session, box-wide, or weekly dispatch
+# count reaches its threshold, unless a bypass sentinel is present.
+#
+# Updated 2026-09-02. DAILY_CAP is per session, so one busy session cannot
+# lock out the 5 to 7 other sessions commonly running on this box. A separate
+# BOX_DAILY_CAP is a rolling-24h backstop across all sessions. Session id
+# "unknown" uses only the box-wide numbers because it cannot have its own
+# bucket. The incident prompting this change: on 2026-09-01 session ad751018
+# made 8 dispatches between 09:24 and 10:15 UTC, then every other session was
+# denied until 09:24 UTC the next day.
 #
 # Wired into PreToolUse with matcher "Agent".
 #
 # Threshold logic:
-#   - DAILY:  default 8 dispatches in last 24h
-#   - 7-day:  default 80 dispatches in last 7d (rationale at WEEKLY_CAP below)
+#   - DAILY:      default 8 dispatches for this session in last 24h
+#   - BOX DAILY:  default 40 dispatches across all sessions in last 24h
+#   - 7-day:      default 200 dispatches across all sessions in last 7d
 #   - First breached threshold wins -> block.
 #
 # Counting: an append-only ledger (~/.claude/agent-dispatch.log), one line
@@ -24,19 +33,17 @@
 #   touch /tmp/agent-budget-bypass    # single-use, hook deletes after read
 #   touch /tmp/agent-budget-disabled  # permanent, lasts until the owner rm's it
 #
-# Override via env: AGENT_BUDGET_DAILY=20 AGENT_BUDGET_7D=100 claude ...
+# Override via env: AGENT_BUDGET_DAILY=20 AGENT_BUDGET_BOX_DAILY=100
+# AGENT_BUDGET_7D=300 AGENT_BUDGET_LEDGER=/tmp/ledger AGENT_BUDGET_AUDIT=/tmp/audit claude ...
 
 set -uo pipefail
 
 DAILY_CAP="${AGENT_BUDGET_DAILY:-8}"
-# 7d is a loose backstop only. daily=8 is the real brake. The 7d window must sit
-# ABOVE what daily implies (~56/wk if maxed) so one legit heavy multi-agent day
-# cannot pathologically lock out the rest of the week, that was the 2026-06
-# lockout cause (115/50 jam). Reset the ledger when bumping this.
-WEEKLY_CAP="${AGENT_BUDGET_7D:-80}"
+BOX_DAILY_CAP="${AGENT_BUDGET_BOX_DAILY:-40}"
+WEEKLY_CAP="${AGENT_BUDGET_7D:-200}"
 
-LEDGER="$HOME/.claude/agent-dispatch.log"
-AUDIT="$HOME/.claude/agent-budget-audit.log"
+LEDGER="${AGENT_BUDGET_LEDGER:-$HOME/.claude/agent-dispatch.log}"
+AUDIT="${AGENT_BUDGET_AUDIT:-$HOME/.claude/agent-budget-audit.log}"
 
 NOW_EPOCH=$(/bin/date +%s)
 DAY_AGO=$(( NOW_EPOCH - 86400 ))
@@ -76,7 +83,28 @@ case "$ENTRYPOINT" in
     exit 0 ;;
 esac
 
-audit() { echo "$(/bin/date -u +%Y-%m-%dT%H:%M:%S)	$1	daily=${2:-?}/${DAILY_CAP}	weekly=${3:-?}/${WEEKLY_CAP}	$SESSION" >> "$AUDIT" 2>/dev/null; }
+# Count existing allowed dispatches before bypass/headless handling so every
+# audit decision reports the same current view of the ledger.
+SESSION_DAILY=0
+BOX_DAILY=0
+WEEKLY=0
+if [ -f "$LEDGER" ]; then
+  read -r SESSION_DAILY BOX_DAILY WEEKLY < <(/usr/bin/awk -F'\t' \
+    -v d="$DAY_AGO" -v w="$WEEK_AGO" -v s="$SESSION" \
+    '{ if ($1+0 > w) wk++; if ($1+0 > d) { box++; if ($2 == s) dy++ } } \
+     END { print dy+0, box+0, wk+0 }' "$LEDGER")
+fi
+SESSION_DAILY=${SESSION_DAILY:-0}; BOX_DAILY=${BOX_DAILY:-0}; WEEKLY=${WEEKLY:-0}
+
+if [ "$SESSION" = "unknown" ]; then
+  DISPLAY_DAILY="$BOX_DAILY"
+  DISPLAY_DAILY_CAP="$BOX_DAILY_CAP"
+else
+  DISPLAY_DAILY="$SESSION_DAILY"
+  DISPLAY_DAILY_CAP="$DAILY_CAP"
+fi
+
+audit() { echo "$(/bin/date -u +%Y-%m-%dT%H:%M:%S)	$1	daily=${DISPLAY_DAILY}/${DISPLAY_DAILY_CAP}+box=${BOX_DAILY}/${BOX_DAILY_CAP}	weekly=${3:-$WEEKLY}/${WEEKLY_CAP}	$SESSION" >> "$AUDIT" 2>/dev/null; }
 
 # Permanent bypass
 if [ -f /tmp/agent-budget-disabled ]; then
@@ -92,25 +120,18 @@ if [ -f /tmp/agent-budget-bypass ]; then
   exit 0
 fi
 
-# Count existing ALLOWED dispatches in the rolling windows from the ledger.
-if [ -f "$LEDGER" ]; then
-  read -r DAILY WEEKLY < <(/usr/bin/awk -F'\t' -v d="$DAY_AGO" -v w="$WEEK_AGO" \
-    '{ if ($1+0 > w) wk++; if ($1+0 > d) dy++ } END { print dy+0, wk+0 }' "$LEDGER")
-else
-  DAILY=0; WEEKLY=0
-fi
-DAILY=${DAILY:-0}; WEEKLY=${WEEKLY:-0}
-
 # Block if already at/over cap (do NOT append a denied attempt)
 BLOCK_REASON=""
-if [ "$DAILY" -ge "$DAILY_CAP" ]; then
-  BLOCK_REASON="Daily Agent cap hit: $DAILY/$DAILY_CAP dispatches in last 24h."
+if [ "$SESSION" != "unknown" ] && [ "$SESSION_DAILY" -ge "$DAILY_CAP" ]; then
+  BLOCK_REASON="Per-session Agent cap hit: $SESSION_DAILY/$DAILY_CAP in this session in the last 24h"
+elif [ "$BOX_DAILY" -ge "$BOX_DAILY_CAP" ]; then
+  BLOCK_REASON="Box-wide Agent cap hit: $BOX_DAILY/$BOX_DAILY_CAP across all sessions in the last 24h"
 elif [ "$WEEKLY" -ge "$WEEKLY_CAP" ]; then
-  BLOCK_REASON="7-day Agent cap hit: $WEEKLY/$WEEKLY_CAP dispatches in last 7d."
+  BLOCK_REASON="7-day Agent cap hit: $WEEKLY/$WEEKLY_CAP across all sessions in the last 7d"
 fi
 
 if [ -n "$BLOCK_REASON" ]; then
-  audit deny "$DAILY" "$WEEKLY"
+  audit deny "$DISPLAY_DAILY" "$WEEKLY"
   REASON="${BLOCK_REASON} Use bash/grep/Read for lookups, ~/bin/codex-review for code review, ~/bin/ai-do for one-shots, or WebSearch for research. Override once: touch /tmp/agent-budget-bypass. Disable: touch /tmp/agent-budget-disabled."
   cat <<EOF
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"${REASON}"}}
@@ -131,5 +152,5 @@ if [ -f "$LEDGER" ]; then
   fi
 fi
 
-audit allow "$DAILY" "$WEEKLY"
+audit allow "$DISPLAY_DAILY" "$WEEKLY"
 exit 0

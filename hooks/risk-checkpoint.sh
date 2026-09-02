@@ -737,9 +737,34 @@ def write_targets(segs, cwd0):
 
 SAFE = re.compile(r"(/tmp/|/var/tmp/|/private/tmp/|node_modules|\.next|dist/|build/|\.cache|__pycache__|\.pytest_cache|\.ruff_cache|\.mypy_cache|\.egg-info|/Caches/)")
 RM = re.compile(r"\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|-rf|-fr)\b", re.I)
+ASSIGN = re.compile(r"(?<![\w$])([A-Za-z_]\w*)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
+VAR_TARGET = re.compile(r"^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))(?:/.*)?$")
+
+def mktemp_only_delete(c):
+    """Recognize only recursive rm of variables assigned from mktemp earlier."""
+    rms = list(RM.finditer(c))
+    if not rms:
+        return False
+    for rm in rms:
+        assignments = {}
+        for assignment in ASSIGN.finditer(c[:rm.start()]):
+            assignments[assignment.group(1)] = bool(
+                re.search(r"\$\(\s*mktemp\b", assignment.group(2))
+            )
+        tail = re.split(r"[;&|\n]", c[rm.end():], maxsplit=1)[0]
+        targets = re.findall(r'''"[^\"]*"|'[^']*'|\S+''', tail)
+        if not targets:
+            return False
+        for target in targets:
+            target = target.strip('"')
+            match = VAR_TARGET.fullmatch(target)
+            name = (match.group(1) or match.group(2)) if match else None
+            if not name or not assignments.get(name, False):
+                return False
+    return True
 
 RULES = [
-    ("destructive delete", lambda c: bool(RM.search(c)) and not SAFE.search(c)),
+    ("destructive delete", lambda c: bool(RM.search(c)) and not SAFE.search(c) and not mktemp_only_delete(c)),
     ("git history rewrite", lambda c: bool(re.search(r"git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f[a-z]*d|git\s+clean\s+-[a-z]*d[a-z]*f", c))),
     # The .* used to span the ENTIRE command string, so it crossed ; && || and
     # newlines. Measured 2026-08-24: `git push -q origin main; pgrep -f x` was
