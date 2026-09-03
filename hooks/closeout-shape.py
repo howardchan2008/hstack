@@ -392,7 +392,15 @@ DEFER_OK = re.compile(
     # An exemption has to name MY refusal of THIS item, not mention the concept.
     r"|\b(?:i|we) refuse|\brefused\b|\brefusing to\b|\bnot mine\b"
     r"|\bblocked on\b|\bcannot until\b|\bwaiting on\b|\bneeds? your\b"
-    r"|\bbecause you (?:have not|haven'?t|did not|didn'?t)\b",
+    r"|\bbecause you (?:have not|haven'?t|did not|didn'?t)\b"
+    # ADDED 2026-09-03: the Codex queue is a real carrier now. A job in
+    # ~/.claude/state/jobq.db runs unattended on a seat, lands in `jobq inbox`,
+    # and is re-injected into the next prompt of whichever session owns that
+    # repo, so work handed to it comes due without the owner. Before this, a
+    # close-out saying "queued as Codex job #32" tripped R10 as an empty
+    # promise unless it happened to carry a path, which punished the one
+    # disposition that actually works.
+    r"|\bjobq\b|\bjob #\d+|\bcodex job\b",
     re.I,
 )
 # Quoted material is data, not a promise: draft copy, a WhatsApp line, his own words.
@@ -749,6 +757,12 @@ def _self_test():
     # recorded -> legal
     rec = ("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
            "- Nothing. Ads script not started, recorded in `storefront/docs/OPEN-ITEMS.md`.")
+    # ADDED 2026-09-03: a job on the Codex queue is a carrier, not a promise.
+    jq = ("DONE\n- Fixed the guard.\n- The other two review findings are queued as "
+          "Codex job #32 and run unattended on the next drain.\n\nYOUR MOVE\n- Nothing. Finished.")
+    check_arm(not any(p.startswith("R10 ") for p in check(jq)),
+              "R10 fired on work handed to the Codex queue, which does come due")
+
     check_arm(not any(p.startswith("R10 ") for p in check(rec)),
               "R10 fired on a deferral that names its backlog file")
     # refused with a blocker -> legal

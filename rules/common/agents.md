@@ -11,6 +11,30 @@ So the first routing instruction in the always-loaded rules pointed at a lane th
 never existed here. Local subagents are the only agent lane. The genuine offload lanes
 are Codex and local Ollama, ranked in the engine-routing ladder in `~/CLAUDE.md`.
 
+## No agent-to-agent framework is adopted here, and the market was checked (2026-09-03)
+
+Ten of the largest orchestration repos were read, plus the A2A protocol (Google, now
+Linux Foundation): oh-my-claudecode 39k, openai/swarm 21.9k (educational, archived
+posture), DeepCode 16.5k, swarms 7.1k, open-multi-agent 6.9k, agency-swarm 4.5k,
+myclaude 2.7k, Shannon 2.2k, gascity 1.2k, multi-agent-concierge 445.
+
+**Every one of them solves discovery and transport between agents that cannot see each
+other**: separate machines, separate owners, no shared disk. A2A is agent cards over
+HTTP for exactly that case. Here Claude and Codex share one filesystem, one sqlite
+queue (`~/.claude/state/jobq.db`), and one keychain, so a card server plus an HTTP hop
+buys a daemon to keep alive and no capability. Two of the ten (myclaude,
+oh-my-claudecode) are skill and agent packs for a single Claude Code install; none of
+the ten crosses the Claude-to-Codex boundary, which is the only boundary on this box.
+
+**The queue plus the inbox is the protocol.** Claude to Codex is `jobq add` then
+`jobq wait <id>` in the background, and the completion notification re-invokes the
+session. Codex to Claude is `jobq inbox`: every finished job sits there until
+`jobq ack <id>`, and `hooks/carryover-queue.py` injects the unacked results for that
+repo into the next prompt of whichever session owns it. Never poll `jobq status` in a
+loop. Documented for the other side in `~/.codex/AGENTS.md`.
+
+Re-open this only if a lane appears that genuinely cannot share the disk.
+
 ## Available Agents
 
 Located in `~/.claude/agents/`:
