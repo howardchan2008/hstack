@@ -63,6 +63,24 @@ TOOL=$(printf '%s' "$INPUT" | /usr/bin/python3 -c 'import json,sys
 try: print((json.load(sys.stdin) or {}).get("tool_name") or "")
 except Exception: print("")' 2>/dev/null)
 [ "$TOOL" != "Agent" ] && exit 0
+
+# PAUSE SWITCH, box-wide. the owner 2026-09-03: "pause all opus subagents across all
+# live sessions since weekly limit has reset". The burn-the-window reason expired
+# with the reset, and 25 sessions are live, so a per-session instruction reaches
+# none of them. This hook runs in every session, which makes it the only place a
+# pause actually binds. Running agents are NOT touched; only new dispatches stop.
+#   pause:   touch ~/.claude/state/agents-paused
+#   resume:  rm ~/.claude/state/agents-paused
+# Write a reason into the file and it is shown in the refusal.
+PAUSE_FILE="${AGENT_BUDGET_PAUSE:-$HOME/.claude/state/agents-paused}"
+if [ -f "$PAUSE_FILE" ]; then
+  REASON=$(/usr/bin/head -c 300 "$PAUSE_FILE" 2>/dev/null | /usr/bin/tr '\n' ' ')
+  [ -z "$REASON" ] && REASON="paused by the owner; no reason recorded"
+  printf 'AGENT DISPATCH PAUSED box-wide: %s\n' "$REASON" >&2
+  printf 'Do the work in this session, or hand it to Codex with `jobq add`, which is\n' >&2
+  printf 'a different budget. Resume with: rm %s\n' "$PAUSE_FILE" >&2
+  exit 2
+fi
 # The old regex required no space after the colon, so a pretty-printed payload
 # never matched and every session shared one "unknown" budget bucket. $INPUT
 # already holds the payload, so hand it to tier 2 directly.
