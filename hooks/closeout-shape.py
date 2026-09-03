@@ -400,7 +400,11 @@ DEFER_OK = re.compile(
     # close-out saying "queued as Codex job #32" tripped R10 as an empty
     # promise unless it happened to carry a path, which punished the one
     # disposition that actually works.
-    r"|\bjobq\b|\bjob #\d+|\bcodex job\b",
+    # NARROWED 2026-09-03 by Codex's own nightly review of this file, and it was
+    # right: a bare `\bjobq\b` exempted ANY deferral that merely said the word,
+    # the same hole the `\brefus` alternative had above. A queue is a carrier only
+    # when it names the job that came due, so an ID is now required.
+    r"|\bjobq (?:job )?#?\d+|\bjob #\d+|\bcodex job #?\d+|\bqueued as [^,.]{0,24}#\d+",
     re.I,
 )
 # Quoted material is data, not a promise: draft copy, a WhatsApp line, his own words.

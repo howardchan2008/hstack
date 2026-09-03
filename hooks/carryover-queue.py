@@ -220,6 +220,25 @@ def was_interrupted(transcript_path):
     return bool(last_user and "Request interrupted" in last_user)
 
 
+def _repo_root(path):
+    """git toplevel that owns `path`, else the path; outside the home tree, ~/.claude."""
+    import subprocess
+    p = os.path.realpath(path or "")
+    if not p:
+        return ""
+    try:
+        r = subprocess.run(["git", "-C", p, "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0 and r.stdout.strip():
+            return os.path.realpath(r.stdout.strip())
+    except Exception:
+        pass
+    home = os.path.realpath(os.path.expanduser("~"))
+    if p == home or not p.startswith(home + os.sep):
+        return os.path.realpath(os.path.expanduser("~/.claude"))
+    return p
+
+
 def codex_inbox(cwd):
     """Finished Codex/local jobs enqueued from this repo that no session has acked.
 
@@ -236,7 +255,7 @@ def codex_inbox(cwd):
     db = os.path.join(os.environ.get("JOBQ_STATE") or os.path.expanduser("~/.claude/state"), "jobq.db")
     if not cwd or not os.path.exists(db):
         return []
-    root = os.path.realpath(cwd)
+    root = _repo_root(cwd)
     out = []
     try:
         c = sqlite3.connect(db, timeout=5)
@@ -244,13 +263,18 @@ def codex_inbox(cwd):
         cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
         if "acked" not in cols:
             return []
-        rows = c.execute("SELECT id,state,lane,cwd,cmd,out,note FROM jobs WHERE acked=0 "
+        has_repo = "repo" in cols
+        cols_sel = "id,state,lane,cwd,cmd,out,note" + (",repo" if has_repo else "")
+        rows = c.execute(f"SELECT {cols_sel} FROM jobs WHERE acked=0 "
                          "AND state IN ('done','failed','stalled') ORDER BY id").fetchall()
     except Exception:
         return []
     for r in rows:
-        jcwd = os.path.realpath(r["cwd"] or "")
-        if not (jcwd == root or jcwd.startswith(root + os.sep) or root in (r["cmd"] or "")):
+        # Match the OWNER recorded at enqueue, never a substring of the command.
+        # The old test injected a job into every repo its spec text happened to
+        # mention: measured 2026-09-03, 2 of 14 recent jobs reached two repos.
+        owner = (r["repo"] if has_repo and r["repo"] else r["cwd"]) or ""
+        if os.path.realpath(owner) != root:
             continue
         summ = r["note"] or ""
         try:
