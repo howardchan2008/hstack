@@ -220,6 +220,53 @@ def was_interrupted(transcript_path):
     return bool(last_user and "Request interrupted" in last_user)
 
 
+def codex_inbox(cwd):
+    """Finished Codex/local jobs enqueued from this repo that no session has acked.
+
+    ADDED 2026-09-03. the owner: "in order for this loop to function effectively you
+    and codex need to effectively poll each other". Codex's half already worked
+    (the drain LaunchAgent ran 27 jobs); the Claude half did not exist. A finished
+    job reached Telegram and a log file, and a session only learned of it if it
+    happened to run `jobq status`. This reads the queue's sqlite directly (no
+    subprocess: the hook runs on every prompt of every session) and injects the
+    unacked results for THIS repo, so the next turn of the owning session carries
+    them. `jobq ack <id>` clears one after the diff is reviewed. Fails open.
+    """
+    import sqlite3
+    db = os.path.join(os.environ.get("JOBQ_STATE") or os.path.expanduser("~/.claude/state"), "jobq.db")
+    if not cwd or not os.path.exists(db):
+        return []
+    root = os.path.realpath(cwd)
+    out = []
+    try:
+        c = sqlite3.connect(db, timeout=5)
+        c.row_factory = sqlite3.Row
+        cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
+        if "acked" not in cols:
+            return []
+        rows = c.execute("SELECT id,state,lane,cwd,cmd,out,note FROM jobs WHERE acked=0 "
+                         "AND state IN ('done','failed','stalled') ORDER BY id").fetchall()
+    except Exception:
+        return []
+    for r in rows:
+        jcwd = os.path.realpath(r["cwd"] or "")
+        if not (jcwd == root or jcwd.startswith(root + os.sep) or root in (r["cmd"] or "")):
+            continue
+        summ = r["note"] or ""
+        try:
+            lines = open(r["out"], errors="replace").read().strip().splitlines()
+            for l in reversed(lines):
+                t = l.strip()
+                if t and not t.startswith(("tokens used", "warning", "UPGRADE_AVAILABLE")) \
+                        and not re.fullmatch(r"[\d,]+", t):
+                    summ = t[:200]
+                    break
+        except Exception:
+            pass
+        out.append((r["id"], r["state"], summ, r["out"] or ""))
+    return out
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -252,8 +299,9 @@ def main():
     interrupted = was_interrupted(payload.get("transcript_path"))
     backlog = repo_backlog(str(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or ""))
     queued = queued_interjections(payload.get("transcript_path"))
+    inbox = codex_inbox(str(payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or ""))
 
-    if not tasks and not interrupted and not backlog and not queued:
+    if not tasks and not interrupted and not backlog and not queued and not inbox:
         # Nothing pending. Say nothing: a reminder that fires on every prompt is
         # noise, and noise is what taught the reader to skip the whole block.
         return
@@ -305,6 +353,18 @@ def main():
             "that file when it is done with evidence, or refused out loud by name. "
             "Check its status against the world before repeating it: the file is "
             "written from memory and has already carried a done item as open."
+        )
+
+    if inbox:
+        lines.append("  CODEX RESULTS for this repo, finished and not yet reviewed (%d):" % len(inbox))
+        for jid, state, summ, log in inbox[:6]:
+            lines.append("    - #%d %s: %s  [log %s]" % (jid, state, summ or "(no summary)", log))
+        if len(inbox) > 6:
+            lines.append("    - (+%d more: jobq inbox --cwd .)" % (len(inbox) - 6))
+        lines.append(
+            "    Read the log, review the diff in the tree, commit only the files the spec "
+            "named or refuse by name, then run `jobq ack <id>`. An unacked result is "
+            "re-injected on every prompt; a stalled or failed one still needs a verdict."
         )
 
     if cancelling:
