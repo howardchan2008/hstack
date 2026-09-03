@@ -180,6 +180,24 @@ if [ "${FABLE_LIVE:-0}" -gt 2 ]; then
   FABLE_HIT=1
 fi
 
+# Is THIS session on Fable? Opus 5 became the settings default on 2026-09-03, so
+# sitting on Fable is now a deliberate choice and the session should be told what
+# the choice is for. Read the model out of the session's own transcript rather
+# than the process list: a session that switched with /model keeps its launch argv,
+# so argv answers the wrong question. tail keeps this to a fixed read.
+SELF_FABLE=0
+TRANSCRIPT=$(printf '%s' "$INPUT" | /usr/bin/sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | /usr/bin/head -1)
+if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  if /usr/bin/tail -c 400000 "$TRANSCRIPT" 2>/dev/null \
+     | /usr/bin/grep -q '"model"[[:space:]]*:[[:space:]]*"claude-fable-5' 2>/dev/null; then
+    SELF_FABLE=1
+  fi
+fi
+if [ "$SELF_FABLE" -eq 1 ]; then
+  MSG="${MSG} [FABLE-SESSION] This session is on Fable 5.1. Opus 5 is the default since 2026-09-03, so this is opt-in and it is for ONE hard problem: think, decide, write the spec, then hand execution to Codex (jobq add) or to an Opus session. Measured 2026-09-03 on the days both ran: a Fable call costs 1.6x an Opus call and 58.5% of its bill is cache WRITE, so every long tool result and every pasted block is charged at \$12.50/MTok here. the owner's own account is that Opus lets him work a full 5-hour window and Fable does not. Mechanical work belongs elsewhere: /model claude-opus-5."
+  FABLE_HIT=1
+fi
+
 if [ "$STATUS" = "OK" ] && [ "$IDLE_HIT" -eq 0 ] && [ "$FABLE_HIT" -eq 0 ]; then
   TMP="${CACHE}.$$"
   : > "$TMP" 2>/dev/null && /bin/mv -f "$TMP" "$CACHE" 2>/dev/null
