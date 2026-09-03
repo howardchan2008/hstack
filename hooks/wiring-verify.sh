@@ -361,6 +361,19 @@ fi
 _failed="$(launchctl list 2>/dev/null | awk '$3 ~ /the owner/ && $2 ~ /^[1-9][0-9]*$/ {print $3"("$2")"}' | tr '\n' ' ')"
 [ -n "$_failed" ] && printf 'wiring-verify: scheduled job(s) last exited non-zero: %s\n' "$_failed"
 
+# --- does Codex still share this box's context in every repo? ---------------------
+# Added 2026-09-03 on the owner's directive that Codex "MUST RETAIN THE SAME CONTEXT
+# ACROSS ALL REPOS AND BE SYNCED". Four of seven repo roots had no AGENTS.md at all,
+# so a Codex run knew different things depending on where it started. The managed
+# block names the files both engines read rather than copying them, so drift here
+# means a repo stopped pointing at the shared set, not that a copy went stale.
+if [ -x "$HOME/.claude/bin/codex-context-sync" ]; then
+  _ccs="$("$HOME/.claude/bin/codex-context-sync" --check 2>/dev/null | tail -1)"
+  case "$_ccs" in
+    *"out of sync"*) printf 'wiring-verify: %s\n' "$_ccs" ;;
+  esac
+fi
+
 # --- one healthy line for all four checks -----------------------------------------
 # The python block wrote SUMMARY only when it found nothing wrong; every real
 # finding it had already printed itself, above, in full. Emit the merged line last
