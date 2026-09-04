@@ -1,0 +1,53 @@
+{
+  "name": "hstack",
+  "version": "0.2.0",
+  "description": "Thirty-one Claude Code hooks that refuse the agent, and the incident behind each one.",
+  "bin": {
+    "hstack": "bin/hstack.js"
+  },
+  "files": [
+    "bin/",
+    "hooks/",
+    "rules/",
+    "docs/",
+    "install.sh",
+    "doctor.sh",
+    "hooks.manifest.json",
+    "settings.example.json",
+    "VERSION",
+    "README.md",
+    "LICENSE",
+    "!**/__pycache__/**",
+    "!**/*.pyc"
+  ],
+  "scripts": {
+    "test": "bash tests/run.sh",
+    "doctor": "bash doctor.sh"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "hooks",
+    "agent-safety",
+    "ai-agents",
+    "anthropic",
+    "llm-tooling",
+    "developer-tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/howardchan2008/hstack.git"
+  },
+  "homepage": "https://github.com/howardchan2008/hstack#readme",
+  "bugs": {
+    "url": "https://github.com/howardchan2008/hstack/issues"
+  },
+  "license": "MIT",
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

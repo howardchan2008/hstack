@@ -87,7 +87,11 @@ copy_tree() {
       # run still exited 0 because the caller piped it. Keep the `if`.
       if [ -x "$f" ]; then chmod +x "$dst"; fi
     fi
-  done < <(find "$src" -type f ! -name '.*')
+  # Prune __pycache__ and *.pyc. They are build output, not payload: the
+  # bytecode is tagged to ONE interpreter version (cpython-314 here) and is
+  # dead weight or worse on any other. The uninstall path already deletes
+  # them from the prefix; without this the install put them there.
+  done < <(find "$src" -type f ! -name '.*' ! -name '*.pyc' ! -path '*/__pycache__/*')
 }
 
 remove_tree() {
@@ -103,7 +107,7 @@ remove_tree() {
     dst="$PREFIX/$rel/$sub"
     [ -f "$dst" ] || continue
     if [ "$DRY" -eq 1 ]; then say "would remove $rel/$sub"; else rm -f "$dst"; fi
-  done < <(find "$REPO/$rel" -type f ! -name '.*')
+  done < <(find "$REPO/$rel" -type f ! -name '.*' ! -name '*.pyc' ! -path '*/__pycache__/*')
 }
 
 # ---------------------------------------------------------------------------
