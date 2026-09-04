@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # prompt-items.py: UserPromptSubmit. Re-injects the ITEMS of the PREVIOUS prompt.
 #
-# The failure this fixes, the owner 2026-08-20, verbatim: "u keep neglecting these items,
+# The failure this fixes, Howard 2026-08-20, verbatim: "u keep neglecting these items,
 # this is smt that a hook requires configuration for, since u ignore all my previous
 # prompts when i put a new one". Same day, earlier: "omfg, u ignored all the other parts
 # of my instruction" after a four-source instruction (Evolution, Gmail, Drive, transcripts)
 # was answered using one source.
 #
 # WHY carryover-queue.py DOES NOT COVER THIS. That hook fires on two signals: open
-# TaskCreate tasks, and an interrupt marker in the transcript. the owner's actual failure
+# TaskCreate tasks, and an interrupt marker in the transcript. Howard's actual failure
 # mode is neither. He sends ONE prompt carrying four imperatives, the model answers the
 # first, and there is no interrupt and no task file, so nothing fires and the other three
 # vanish silently. The hole is exactly where the complaint lives. TaskCreate is also not
@@ -30,7 +30,7 @@ import re
 import sys
 
 STORE = os.environ.get("PROMPT_ITEMS_ROOT") or os.path.expanduser("~/.claude/carryover")
-# 2026-08-28: was 12, and the owner approved FIFTEEN a venture items in one
+# 2026-08-28: was 12, and Howard approved FIFTEEN Premier Trophy items in one
 # message. Items 13-15 were dropped at the `return` below with nothing said, so
 # the turn read as fully covered while three approvals never entered the list.
 # A silent cap is the same defect as a false zero: the work looks done because
@@ -38,14 +38,14 @@ STORE = os.environ.get("PROMPT_ITEMS_ROOT") or os.path.expanduser("~/.claude/car
 MAX_ITEMS = 40
 MAX_ITEM_CHARS = 160
 
-# Lines that are harness furniture, not the owner asking for something.
+# Lines that are harness furniture, not Howard asking for something.
 NOISE = re.compile(
     r"^\s*(<system-reminder|Caveat:|\[Request interrupted|Stop hook feedback|"
     r"DONE\b|YOUR MOVE\b|===|---|#{1,6}\s)",
     re.I,
 )
 
-# An item is a clause that asks for something. Imperative verbs the owner actually uses,
+# An item is a clause that asks for something. Imperative verbs Howard actually uses,
 # plus question forms, plus explicit "i want/need".
 ASKS = re.compile(
     r"\b(gener(ate|ating)|creat(e|ing)|writ(e|ing)|draft|review|check|verify|measure|"
@@ -62,7 +62,7 @@ ASKS = re.compile(
 # application ... no one has been interviewed ... by the progress i meant ..."), ASKS
 # alone found 4 of 9. The five it dropped were every clause that corrects a wrong belief
 # rather than ordering new work, which is the half that costs most when it vanishes:
-# the model keeps acting on the belief the owner just told it was wrong. ~/CLAUDE.md has
+# the model keeps acting on the belief Howard just told it was wrong. ~/CLAUDE.md has
 # said "a correction is an item" since 2026-08-11; the splitter never implemented it.
 CORRECTS = re.compile(
     r"(\b(no one|nobody|nothing|never|none of)\b|"
@@ -119,14 +119,86 @@ def split_enumerated(line):
     return parts
 
 
+# A line carrying a measurement and no words: "140", "6.0%", "45.3k",
+# "105.1k / 750k (14%)", or a bare dash standing in for an empty cell. Every
+# character must come from the numeric set, so any real sentence is excluded by
+# its own letters. The two unicode dashes are built with chr() because
+# dash-gate.sh blocks the literal glyphs in an authored file, and it is right to:
+# it cannot know this pair is a character class rather than punctuation.
+DASHES = "-" + chr(0x2014) + chr(0x2013)
+NUMLINE = re.compile(
+    "^(?:[" + DASHES + r"]|(?=[^\n]*\d)[\s\d.,%/()+:-]*[kKmMgGbB]?[\s\d.,%/()+:-]*)$"
+)
+
+# Below this many measurement lines it is prose that happens to quote figures.
+# The /context pane emits dozens; a prompt of Howard's has at most one or two.
+MACHINE_TABLE_MIN = 8
+
+
+def strip_machine_tables(prompt):
+    """Drop the rows of a pasted machine table, keeping everything Howard typed.
+
+    THE DEFECT, 2026-09-04. Howard pasted the `/context` pane and asked one
+    question about it. The splitter returned 24 items, ten of them roster rows:
+    "computer-use / computer_batch", "list_granted_applications",
+    "writing-style.md". item-coverage then blocked the close-out for never
+    mentioning them, and the Stop hook fired that same ten-item complaint on
+    every turn for the rest of the session, so a guard built to catch dropped
+    work became the loudest source of fake work on the box.
+
+    NO PER-LINE TEST CAN FIX THIS, which is why the two filters that already
+    exist both passed it. `judgeable()` admits a lowercase opener because bare
+    imperatives ("commit + record in docs/X") carry no pronoun either, and
+    `PASTED` looks for prose markers a roster row does not have. On its own line
+    the row is genuinely indistinguishable from an instruction. What separates
+    them is the TABLE: the row sits between two lines of pure measurement, which
+    no sentence Howard writes ever does.
+
+    So the unit of judgement moves from the line to its neighbourhood. A line is
+    table furniture when the nearest non-blank line above AND below are both
+    measurements. His trailing question survives because nothing follows it.
+    """
+    lines = prompt.splitlines()
+    numeric = [bool(ln.strip()) and bool(NUMLINE.match(ln.strip())) for ln in lines]
+    if sum(numeric) < MACHINE_TABLE_MIN:
+        return prompt
+
+    def neighbour(i, step):
+        # Blank lines are transparent: a table stays a table across a gap, and
+        # treating a gap as "not a measurement" is how the first draft let half
+        # the roster back through.
+        j = i + step
+        while 0 <= j < len(lines):
+            if lines[j].strip():
+                return numeric[j]
+            j += step
+        return False
+
+    def furniture(i):
+        above, below = neighbour(i, -1), neighbour(i, 1)
+        if above and below:
+            return True
+        # A row that is ONE token wide needs only one measurement neighbour.
+        # Measured on the real paste: the memory-file section cycles filename,
+        # size, directory, so every filename has a size on one side and a path
+        # on the other and never sits between two numbers. "writing-style.md"
+        # was the single row that survived the two-sided rule. A request Howard
+        # types always has a space in it, so a bare token beside a measurement
+        # is a cell, whatever it names.
+        return (above or below) and len(lines[i].split()) == 1
+
+    kept = [ln for i, ln in enumerate(lines) if not numeric[i] and not furniture(i)]
+    return "\n".join(kept)
+
+
 def split_items(prompt):
     """Break a prompt into the things it actually asks for."""
     items = []
-    for raw_line in prompt.splitlines():
+    for raw_line in strip_machine_tables(prompt).splitlines():
         line = raw_line.strip()
         if not line or NOISE.match(line):
             continue
-        # An enumeration the owner typed himself beats any guess this splitter makes.
+        # An enumeration Howard typed himself beats any guess this splitter makes.
         # Added 2026-08-24 after watching this hook shred the one prompt it was
         # built from: it carried "1 remove the line. 2 nobody interviewed. ..."
         # inline, the comma rule below cut across the numbers, and three garbage
@@ -143,7 +215,7 @@ def split_items(prompt):
         # guess. The code then applied the guess anyway.
         enumerated = parts is not None
         if parts is None:
-            # the owner writes long run-ons joined by commas and "and". Split on the joins
+            # Howard writes long run-ons joined by commas and "and". Split on the joins
             # that reliably separate two asks, not on every comma.
             parts = re.split(r"(?:,\s+(?:and\s+)?(?=\w)|;\s*|\.\s+(?=[A-Za-z])|\band then\b)", line)
         for p in parts:
@@ -198,7 +270,7 @@ def main():
         return
     prompt = str(payload.get("prompt") or "")
     # hookpaste (2026-09-02): pasted hook output is the harness quoting itself, not
-    # the owner asking. Wrapped so a missing lib can never take this hook down.
+    # Howard asking. Wrapped so a missing lib can never take this hook down.
     try:
         import sys as _s, os as _o
         _s.path.insert(0, _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "lib"))
@@ -218,7 +290,7 @@ def main():
 
     # THE CURRENT PROMPT'S OWN ITEMS, added 2026-08-30. Until now this hook only
     # ever showed the PREVIOUS turn's items, which arrives one turn too late for
-    # the failure it is aimed at. the owner: "even if i mention more than 3 items
+    # the failure it is aimed at. Howard: "even if i mention more than 3 items
     # still do all of them, i think this is necessary".
     #
     # WHY THIS IS THE RIGHT PLACE, measured the same day across 175 items from a
@@ -231,7 +303,7 @@ def main():
     # Coverage halves as the list grows, and every item of a multi-item list was
     # covered in 8 turns out of 47. The decay is by POSITION, which is what a list
     # sitting in front of the model at the start of the turn addresses, rather than
-    # a refusal at the end of it that costs the owner a second reply.
+    # a refusal at the end of it that costs Howard a second reply.
     #
     # Threshold is 3 because 2-3 item messages already run at 62% and the fall is
     # after that. A block on every two-item prompt is the noise this file's own
@@ -251,7 +323,7 @@ def main():
         if out:
             out.append("")
         out += [
-            "ITEMS FROM the owner'S PREVIOUS PROMPT. A new prompt does not retire these.",
+            "ITEMS FROM HOWARD'S PREVIOUS PROMPT. A new prompt does not retire these.",
             "Close out against every line. Finished goes in DONE, refused or blocked goes",
             "in YOUR MOVE with the reason. Silent omission is the defect this exists for.",
         ]
@@ -274,10 +346,11 @@ if __name__ == "__main__":
         os.environ["PROMPT_ITEMS_ROOT"] = root
         STORE = root
 
-        # 1. A real multi-part the owner prompt must yield several distinct items.
-        p = ("read the failing test and tell me why it hangs\n"
-     "then fix the timeout and push it\n"
-     "also the readme still says twelve hooks, that is wrong")
+        # 1. A real multi-part Howard prompt must yield several distinct items.
+        p = ("approach all original transcripts and msgs u hv evolution api access to "
+             "whatsapp and gcp token for gdrive and gmail api and my msgs to claude\n"
+             "use the whatsapp evolution api to review all my other chats, create profiles "
+             "for all the new ones, sync with gdoc SOT, no code necessary")
         got = split_items(p)
         if len(got) < 3:
             fails.append(f"multi-part prompt split into only {len(got)} items: {got}")
@@ -306,12 +379,12 @@ if __name__ == "__main__":
 
         # 5. A CORRECTION is an item. This is the real 2026-08-24 prompt, and the
         #    version of this splitter that only looked for asks found 4 of the 9 things
-        #    the owner listed back. Every one it dropped was a corrected belief.
+        #    Howard listed back. Every one it dropped was a corrected belief.
         nine = ("remove If you would rather we closed your application, say so and I "
                 "will close it today; no one has been interviewed, omfg, why u msging "
                 "like u had more x from y than z, and for the money i need to discuss "
-                "this with a contact first; reddit has banned apps afaik, the other "
-                "alternative i set it up in my own a venture subreddit, using the new "
+                "this with georgio first; reddit has banned apps afaik, the other "
+                "alternative i set it up in my own priormoves subreddit, using the new "
                 "api path do not send the 62, the 8 questions are also important no, by "
                 "the progress i meant the current level of correspondence between each "
                 "of the tutors and myself")
@@ -333,7 +406,7 @@ if __name__ == "__main__":
         if back != ["rotate ascend pw", "give social advice"]:
             fails.append(f"round trip lost items: {back}")
 
-        # 8. FIFTEEN items survive. the owner approved 15 a venture items in one
+        # 8. FIFTEEN items survive. Howard approved 15 Premier Trophy items in one
         #    message on 2026-08-27 and the cap was 12, so three approvals were
         #    dropped at the return with nothing said.
         fifteen = " ".join(f"{i}. fix the item number {i} on the site" for i in range(1, 16))
@@ -349,6 +422,39 @@ if __name__ == "__main__":
         if not any(i.startswith("OVERFLOW:") for i in got_over):
             fails.append(f"cap truncated silently at {len(got_over)} items")
 
-        print("FAIL: " + "; ".join(fails) if fails else "PASS: all 9 checks")
+        # 10. A PASTED MACHINE TABLE IS NOT A LIST OF ASKS. 2026-09-04: Howard
+        #     pasted the `/context` pane and asked one question. The splitter
+        #     returned 24 items, ten of them roster rows, and every close-out for
+        #     the rest of the session was blocked on ten things nobody asked for.
+        #     Roster rows are lexically identical to bare lowercase imperatives,
+        #     so the table is recognised by its NEIGHBOURHOOD, never per line.
+        pane = "\n".join([
+            "Context Usage",
+            "claude-opus-5 - 105.1k/750k tokens (14%)",
+            "System prompt", "3.4k", "0.5%",
+            "System tools", "16.4k", "2.2%",
+            "MCP tools", "13.1k", "1.8%",
+            "Memory files", "45.3k", "6.0%",
+            "Custom agents", "2.7k", "0.4%",
+            "computer-use", "request_teach_access", "1.1k",
+            "computer-use", "switch_display", "280",
+            "writing-style.md", "3.3k",
+            "development-workflow.md", "1.4k",
+            "Free space", "611.4k", "81.5%",
+            "but i want u to do all the items that require a restart first",
+        ])
+        got_pane = split_items(pane)
+        if got_pane != ["but i want u to do all the items that require a restart first"]:
+            fails.append(f"pasted machine table produced items: {got_pane}")
+
+        # 10b. NEGATIVE CONTROL for the same filter. A real prompt that merely
+        #      quotes a couple of figures must survive intact, or the fix trades
+        #      one silent drop for another.
+        quoted = ("the run came back 105.1k over 750k so raise the cap\n"
+                  "then re-run lane-bench and report the winner")
+        if len(split_items(quoted)) != 2:
+            fails.append(f"prompt quoting figures was eaten: {split_items(quoted)}")
+
+        print("FAIL: " + "; ".join(fails) if fails else "PASS: all 11 checks")
         sys.exit(1 if fails else 0)
     main()
