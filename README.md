@@ -6,6 +6,18 @@ Thirty-one Claude Code hooks that refuse the agent, and the incident behind
 each one.
 
 ```bash
+npx @imjusthoward/hstack --dry-run   # prints every change, writes nothing
+npx @imjusthoward/hstack             # installs the hooks and merges settings.json
+npx @imjusthoward/hstack doctor      # tells you which guards are actually armed
+```
+
+Nothing to clone. The installer is idempotent, backs `settings.json` up before it
+touches it, and `--uninstall` puts things back. macOS and Linux; the hooks are bash,
+so Windows needs WSL.
+
+From a clone instead, if you want the test suite:
+
+```bash
 git clone https://github.com/howardchan2008/hstack && cd hstack
 ./install.sh          # copies the hooks, merges settings.json, backs it up first
 ./doctor.sh           # tells you which guards are actually armed
