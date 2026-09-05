@@ -111,13 +111,39 @@ def load_items(session_id):
 _HOOKJUNK = re.compile(
     r"^\s*(<system-reminder|<user-prompt-submit-hook|<command-name|<local-command|"
     r"<task-notification|\[Request interrupted|Caveat:|\[SYSTEM NOTIFICATION|"
+    # THIS HOOK'S OWN REFUSAL, added 2026-09-06. A Stop block is written back into
+    # the transcript as a USER turn, so on the retry the newest "prompt" was this
+    # hook's own banner, and it judged the close-out against four items split out
+    # of its own words. A guard that can cite itself as the request never clears.
+    r"Stop hook feedback|Stop hook blocking error|"
     r"This session is being continued)", re.I)
 
 
 def _clean_user_text(t):
+    # One owner for harness furniture: the same lib the UserPromptSubmit injectors
+    # use, so a marker added there is honoured here without a second list to drift.
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+        from hookpaste import strip_hook_paste as _strip
+        t = _strip(t)
+    except Exception:
+        pass
     t = re.sub(r"<system-reminder>.*?</system-reminder>", "", t, flags=re.S)
     t = re.sub(r"UserPromptSubmit hook additional context:.*", "", t, flags=re.S)
-    return t.strip()
+    # HARNESS XML THAT SURVIVED THE STRIPS ABOVE. An UNCLOSED or nested
+    # <system-reminder> leaves its inner lines behind, the splitter reads them as
+    # requests, and the hook then demands work on a notification nobody sent.
+    t = re.sub(r"<task-notification>.*?</task-notification>", "", t, flags=re.S)
+    t = re.sub(r"<system-reminder>.*", "", t, flags=re.S)   # unclosed opener
+    keep = []
+    for ln in t.splitlines():
+        s = ln.strip()
+        if s and (re.match(r"^</?[a-z][\w-]*>", s, re.I)
+                  or "toolu_" in s
+                  or re.match(r"^\[SYSTEM NOTIFICATION", s, re.I)):
+            continue
+        keep.append(ln)
+    return "\n".join(keep).strip()
 
 
 def items_from_transcript(transcript_path):

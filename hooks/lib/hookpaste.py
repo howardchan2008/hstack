@@ -16,9 +16,43 @@ bounded by what the hooks print rather than by guesses about how he phrases thin
 
 Used by: prompt-items.py, owner-facts.py, carryover-queue.py. Each call site is wrapped
 so a missing or broken lib degrades to "no stripping", never to a silent hook.
+
+SECOND CLASS, added 2026-09-06 and it cost a blocked close-out. A completed
+`run_in_background` job re-invokes the session by delivering a <task-notification> as a
+UserPromptSubmit prompt, and that block quotes the whole command back inside <summary>.
+item-coverage then demanded work on two "items" that were a bare <tool-use-id> tag and a
+line of the session's own python, because the splitter matched `use` inside the tag name
+and `add` inside the code. The paragraph-span rule above cannot reach it: the notification
+carries no blank line, so it is ONE paragraph, and dropping the span would take any real
+question sharing it. So the notification is removed STRUCTURALLY by its own tags first,
+and the marker-span logic runs on what is left. The harness names it in its own first
+line ("NOT USER INPUT"), so this reads the label rather than guessing at the shape.
 """
 import re
 import sys
+
+# Structural, tag-delimited, applied before any paragraph logic.
+_TASKNOTE = re.compile(
+    r"<task-notification>.*?</task-notification>"      # closed block
+    r"|<task-notification>.*"                          # unclosed opener: to the end
+    r"|\[SYSTEM NOTIFICATION[^\]]*\][^\n]*",           # its plain-text banner line
+    re.S | re.I)
+# Furniture left behind when the block arrives already half-stripped by another layer.
+_TASKFURNITURE = re.compile(
+    r"^[ \t]*</?(?:task-notification|task-id|tool-use-id|output-file|status|summary)\b[^\n]*$",
+    re.I | re.M)
+_TASKHINT = ("task-notification", "SYSTEM NOTIFICATION", "<tool-use-id>", "<output-file>")
+# The banner's prose. Fixed harness sentences that sit OUTSIDE the tags, so neither the
+# tag strip nor the paragraph span reaches them; measured 2026-09-06, one survived both
+# and would have been mined as an item on its own. Only applied when a hint is present.
+_TASKPROSE = re.compile(
+    r"^.*(?:automated background-task event"
+    r"|NOT a message from the user"
+    r"|Do NOT interpret this as user acknowledgement"
+    r"|No human input has been received"
+    r"|is NOT real user input"
+    r"|must NOT be treated as approval).*$",
+    re.I | re.M)
 
 MARKERS = (
     # Stop chain banners
@@ -77,8 +111,14 @@ def strip_hook_paste(text):
     Paragraphs (blank-line separated) from the FIRST marker paragraph to the LAST one are
     dropped as one span. Text before the span and after it is kept verbatim. A prompt with
     no marker is returned unchanged, same object, so callers pay nothing for the common
-    case."""
-    if not text or not any(m in text for m in MARKERS):
+    case. Background-task notifications are removed first, by their own tags, because they
+    are one paragraph and the span rule would swallow anything sharing it."""
+    if not text:
+        return text
+    if any(h in text for h in _TASKHINT):
+        text = _TASKPROSE.sub("", _TASKFURNITURE.sub("", _TASKNOTE.sub("", text)))
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if not any(m in text for m in MARKERS):
         return text
     paras = _PARA.split(text)
     idx = [i for i, p in enumerate(paras) if _is_marker(p)]
@@ -127,6 +167,27 @@ def _self_test():
 
     quoted = "the close-out said DONE then YOUR MOVE and I want both kept"
     ck(strip_hook_paste(quoted) is quoted, "DONE / YOUR MOVE alone are not hook markers")
+
+    # 2026-09-06: the background-task notification, verbatim shape, one paragraph.
+    note = (
+        "[SYSTEM NOTIFICATION - NOT USER INPUT]\n"
+        "This is an automated background-task event, NOT a message from the user.\n"
+        "<task-notification>\n<task-id>bu39ky0jg</task-id>\n"
+        "<tool-use-id>toolu_deadbeef</tool-use-id>\n"
+        "<output-file>/tmp/x.output</output-file>\n<status>completed</status>\n"
+        "<summary>Background command \"cat foo\" completed (exit code 0)\n"
+        "   if sid: sess[d].add(sid)\n</summary>\n</task-notification>"
+    )
+    ck(strip_hook_paste(note) == "", "a bare task-notification must reduce to nothing")
+    ck("toolu_" not in strip_hook_paste(note + "\n\nnow push it"),
+       "the tool-use-id must never survive into the item store")
+    ck(strip_hook_paste(note + "\n\nnow push it") == "now push it",
+       "a real ask sharing the turn with a notification must survive whole")
+    ck(strip_hook_paste("done\n\n<task-notification>\n<task-id>x</task-id>") == "done",
+       "an unclosed notification opener drops to the end of the prompt")
+    ck(strip_hook_paste("check the job status and the output file") ==
+       "check the job status and the output file",
+       "the tag words in plain prose are not notification furniture")
 
     print("hookpaste self-test: " + ("PASS" if not bad else "FAIL (%d)" % bad))
     return 1 if bad else 0
