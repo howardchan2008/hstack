@@ -306,6 +306,24 @@ def cmd_credit(a):
         kind="verified-before-answering", points=None, reason=a.reason or ""))
 
 
+def cmd_verdict(a):
+    """HIS verdict, which outranks every proxy in this file.
+
+    Everything else here is inference: regex over his tone, hook refusals, mined
+    fault classes. The backtest put that inference at rho -0.77 against how often
+    he pushed back, which is good for a proxy and is still a proxy. One word from
+    him is ground truth, so it is weighted heavier than any single mined class.
+    """
+    pts = a.points if a.points is not None else 20
+    if a.verdict in ("good", "+1", "up"):
+        d = _append("award", "owner-verdict", pts, a.reason or "he said it was good")
+        print("+%d  owner-verdict  ->  score %d (%s)" % (pts, score(d), tier(score(d))))
+    else:
+        d = _append("deduct", "owner-verdict", pts, a.reason or "he said it was bad")
+        print("-%d  owner-verdict  ->  score %d (%s)" % (pts, score(d), tier(score(d))))
+    return 0
+
+
 def cmd_clear(a):
     d = load()
     d["cleared_at"] = _now()
@@ -337,7 +355,12 @@ BLOCK_RE = re.compile(
 
 def cmd_sync(a):
     d = load()
-    since = max(d.get("synced_to", 0), _now() - a.since * 3600)
+    # --reset re-reads the whole window. Without it `since` can only move forward,
+    # so a source wired in AFTER the first sync (the fault ledger was, on
+    # 2026-09-06) can never be back-filled and the live score silently disagrees
+    # with the backtest that uses the same data.
+    since = (_now() - a.since * 3600 if getattr(a, "reset", False)
+             else max(d.get("synced_to", 0), _now() - a.since * 3600))
     newest, found = since, 0
     for p in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):
         try:
@@ -370,11 +393,48 @@ def cmd_sync(a):
         _append("deduct", "guard-block",
                 WEIGHTS["guard-block"] * min(found, 5),
                 "%d guard refusal(s) since the last sync" % found)
+
+    # THE FAULT LEDGER IS THE OTHER HALF, and leaving it out made the live score
+    # disagree with its own backtest: on 2026-09-06 the live number read 97 while
+    # the same week backtested at 43 to 92, because only guard blocks were being
+    # ingested and the dominant class (ignored-what-he-already-said) never was.
+    # One MOMENT per class per timestamp, never one row, for the bulk-ingest
+    # reason documented on batch_shape.
+    fresh = collections.Counter()
+    try:
+        store = json.load(open(FAULTS_JSON, encoding="utf-8"))
+        rows = store.get("faults") or {}
+        seen = set()
+        for r in (rows.values() if isinstance(rows, dict) else rows):
+            ts = str(r.get("ts") or "")[:19]
+            if not ts:
+                continue
+            try:
+                at = time.mktime(time.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+            except Exception:
+                try:
+                    at = time.mktime(time.strptime(ts, "%Y-%m-%dT%H:%M:%S"))
+                except Exception:
+                    continue
+            if at <= since:
+                continue
+            cls = r.get("category") or "?"
+            if (cls, ts) in seen:
+                continue
+            seen.add((cls, ts))
+            fresh[cls] += 1
+            newest = max(newest, at)
+    except Exception:
+        pass
+    for cls, n in fresh.items():
+        _append("deduct", cls, WEIGHTS.get(cls, DEFAULT_DEDUCT) * n,
+                "%d incident(s) mined by the fault ledger since the last sync" % n)
+
     d = load()
     d["synced_to"] = newest
     save(d)
-    print("sync: %d guard refusal(s) counted, score %d (%s)"
-          % (found, score(d), tier(score(d))))
+    print("sync: %d guard refusal(s), %d ledger incident(s), score %d (%s)"
+          % (found, sum(fresh.values()), score(d), tier(score(d))))
     return 0
 
 
@@ -703,10 +763,16 @@ def main():
     s = sub.add_parser("credit"); s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_credit)
     s = sub.add_parser("sync"); s.add_argument("--since", type=float, default=24.0,
                                                help="hours to look back on a first run")
+    s.add_argument("--reset", action="store_true",
+                   help="re-read the whole window, ignoring the last sync mark")
     s.set_defaults(fn=cmd_sync)
     s = sub.add_parser("surveil"); s.set_defaults(fn=cmd_surveil)
     s = sub.add_parser("backtest"); s.add_argument("--days", type=int, default=9)
     s.set_defaults(fn=cmd_backtest)
+    s = sub.add_parser("verdict", help="his own call, weighted above every proxy")
+    s.add_argument("verdict", choices=["good", "bad", "+1", "-1", "up", "down"])
+    s.add_argument("reason", nargs="?", default=""); s.add_argument("--points", type=int)
+    s.set_defaults(fn=cmd_verdict)
     s = sub.add_parser("clear"); s.set_defaults(fn=cmd_clear)
     s = sub.add_parser("log"); s.add_argument("-n", "--num", type=int, default=20); s.set_defaults(fn=cmd_log)
     a = ap.parse_args()
