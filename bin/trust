@@ -792,6 +792,45 @@ def cmd_fit(a):
     return 0
 
 
+def cmd_arms(a):
+    """Does the encouragement arm actually do anything? Compare, do not assume.
+
+    He asked whether "believing in yourself" works, so it is an experiment rather
+    than a decoration: hooks/encourage.py splits sessions 50/50 and prints the
+    evidenced-wins block only in arm A. This joins that assignment to the two
+    outcome measures already on disk, the deduction points a session earned and
+    how often he pushed back inside it, and refuses to call a winner while the
+    sample is too small.
+    """
+    try:
+        arms = json.load(open(os.path.join(STATE, "encourage-arms.json"), encoding="utf-8"))
+    except Exception:
+        arms = {}
+    if not arms:
+        print("arms: no sessions assigned yet (hooks/encourage.py has not run)")
+        return 0
+    d = load()
+    pts = collections.defaultdict(float)
+    for e in d["events"]:
+        sid = e.get("session") or ""
+        if e.get("kind") == "deduct" and sid:
+            pts[sid] += e.get("points", 0)
+    rows = collections.defaultdict(list)
+    for sid, meta in arms.items():
+        rows[meta.get("arm", "?")].append(pts.get(sid, 0.0))
+    print("%-5s %8s %12s %12s" % ("arm", "sessions", "mean deducts", "median"))
+    for arm in sorted(rows):
+        v = sorted(rows[arm])
+        mean = sum(v) / len(v) if v else 0
+        print("%-5s %8d %12.1f %12.1f" % (arm, len(v), mean, v[len(v) // 2] if v else 0))
+    small = min((len(v) for v in rows.values()), default=0)
+    if small < 10:
+        print("\nNOT A RESULT YET: the smaller arm has %d session(s). Ten each is the "
+              "floor before this says anything, and saying it early is how an A/B "
+              "gets quoted as fact." % small)
+    return 0
+
+
 def _self_test():
     import tempfile
     global LEDGER
@@ -962,6 +1001,8 @@ def main():
                    help="re-read the whole window, ignoring the last sync mark")
     s.set_defaults(fn=cmd_sync)
     s = sub.add_parser("surveil"); s.set_defaults(fn=cmd_surveil)
+    s = sub.add_parser("arms", help="encouragement A/B: does it change anything")
+    s.set_defaults(fn=cmd_arms)
     s = sub.add_parser("backtest"); s.add_argument("--days", type=int, default=9)
     s.set_defaults(fn=cmd_backtest)
     s = sub.add_parser("fit", help="fit the weights to his push-back rate")

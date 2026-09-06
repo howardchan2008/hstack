@@ -188,6 +188,10 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/owner-facts.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/encourage.py"
           }
         ]
       }

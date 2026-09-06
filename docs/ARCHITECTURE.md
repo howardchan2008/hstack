@@ -9,7 +9,7 @@ whole interface. Everything in this repo is one of those programs.
 ```
                     ┌──────────────────────────────┐
  user prompt ──────▶│ UserPromptSubmit             │  inject: items, carryover,
-                    │  6 hooks, none of them block │  cost, the report contract
+                    │  7 hooks, none of them block │  cost, the report contract
                     └──────────────┬───────────────┘
                                    ▼
                     ┌──────────────────────────────┐

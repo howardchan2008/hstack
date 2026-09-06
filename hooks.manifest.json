@@ -316,6 +316,14 @@
       "runner": "python3",
       "block": "exit2",
       "refuses": "arguing with a correction instead of checking it: a contradiction answered with zero tool calls, or a repeated correction answered without a concession or a measurement. Files a strike in bin/trust, and probation then closes agent dispatches until it is earned back"
+    },
+    {
+      "file": "encourage.py",
+      "event": "UserPromptSubmit",
+      "matcher": null,
+      "runner": "python3",
+      "block": "none",
+      "refuses": "nothing: it is the reward side. Prints the evidenced wins of the last day and the single most expensive open deduction, and prints NOTHING when there is no evidence, so it cannot become a participation trophy. Half of sessions are a silent control arm, because whether encouragement helps is a measurement, not an assumption"
     }
   ]
 }

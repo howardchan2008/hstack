@@ -72,6 +72,7 @@ KNOWN = {
     # deliberate, and printed REVIEW at every session start for weeks.
     "closeout-shape.py",
     "concede-gate.py",
+    "encourage.py",
     # Added 2026-08-17, same reason as the eleven below: it landed committed
     # (9210a9d) from a concurrent session and printed REVIEW at every start.
     # Added 2026-08-14. All eleven below were registered, on disk, deliberate,

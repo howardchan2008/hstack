@@ -363,6 +363,21 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `encourage.py` &nbsp;·&nbsp; no block
+
+The reward side. Prints the evidenced wins of the last 24 hours (awards the
+ledger accepted, commits that actually landed) and the single most expensive open
+deduction, so the feedback is specific rather than flattering. Prints NOTHING
+when there is no evidence: praise with no artefact behind it is the same defect
+as a claim with no measurement.
+
+Half of sessions are a silent control arm, assigned by a hash of the session id
+so the split is sticky, because whether encouragement changes anything is a
+measurement rather than an assumption. `trust arms` compares the two and refuses
+to call a winner until each arm has ten sessions. Carries a `--self-test` with
+three negative controls: an empty day prints nothing, the control arm never
+prints, and no open deductions means no invented next move.
+
 ### `concede-gate.py` &nbsp;·&nbsp; exit-2 block
 
 Refuses a close-out that argues with a correction instead of checking it. Two
