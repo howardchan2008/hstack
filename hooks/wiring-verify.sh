@@ -358,8 +358,32 @@ fi
 # NEGATIVE values are signals, not failures: -15 is the SIGTERM from a deliberate
 # `launchctl kickstart -k`, and four jobs showed it purely because they had just been
 # restarted. Only a POSITIVE status means the job itself returned an error.
-_failed="$(launchctl list 2>/dev/null | awk '$3 ~ /the owner/ && $2 ~ /^[1-9][0-9]*$/ {print $3"("$2")"}' | tr '\n' ' ')"
+# WIRING_VERIFY_JOB_PREFIX narrows this to your own agents. The pattern here used to be
+# a personal name that the publish scrub rewrote into prose, leaving an awk regex that
+# matched no label at all: a check that can never fire reads exactly like a clean box.
+_failed="$(launchctl list 2>/dev/null | awk -v re="${WIRING_VERIFY_JOB_PREFIX:-}" \
+  '$2 ~ /^[1-9][0-9]*$/ && $3 !~ /^com\.apple\./ && (re == "" || index($3, re) == 1) {print $3"("$2")"}' \
+  | tr '\n' ' ')"
 [ -n "$_failed" ] && printf 'wiring-verify: scheduled job(s) last exited non-zero: %s\n' "$_failed"
+
+# --- auto-compact: the window and the trigger are TWO knobs ------------------------
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW is the WINDOW (it is also the denominator in the
+# /context readout) and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is the TRIGGER, applied as
+# threshold = min(floor(window*pct/100), window-13000). Setting only the window moves
+# the trigger to window-13000, which reads as "auto-compact never fires"; putting a
+# number in settings.json `autoCompactWindow` shrinks the context window itself, which
+# reads as "you changed my context limit". Both happened here within three days, so
+# the half-configured state is what this warns about, not any particular number.
+_acw="$(launchctl getenv CLAUDE_CODE_AUTO_COMPACT_WINDOW 2>/dev/null)"
+_acp="$(launchctl getenv CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 2>/dev/null)"
+if [ -n "$_acw" ] && [ -z "$_acp" ]; then
+  printf 'wiring-verify: auto-compact window pinned to %s with no CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, so the trigger is window-13000 and early compaction is effectively off\n' "$_acw"
+fi
+_acs="$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.claude/settings.json"))).get("autoCompactWindow"))' 2>/dev/null)"
+case "$_acs" in
+  ''|auto|None) : ;;
+  *) printf 'wiring-verify: settings.json autoCompactWindow=%s is a NUMBER, which caps the context window itself; the compaction trigger belongs in CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\n' "$_acs" ;;
+esac
 
 # --- does Codex still share this box's context in every repo? ---------------------
 # Added 2026-09-03 on the owner's directive that Codex "MUST RETAIN THE SAME CONTEXT
