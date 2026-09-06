@@ -26,7 +26,7 @@ whole interface. Everything in this repo is one of those programs.
                                    ▼
                     ┌──────────────────────────────┐
    end of turn ────▶│ Stop                         │  refuse to finish with
-                    │  8 hooks, 6 of them refuse   │  work left on the floor
+                    │  9 hooks, 7 of them refuse   │  work left on the floor
                     └──────────────────────────────┘
 
   SessionStart (4 hooks): prove the guards are armed, say who else is live,

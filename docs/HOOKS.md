@@ -363,6 +363,24 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `concede-gate.py` &nbsp;·&nbsp; exit-2 block
+
+Refuses a close-out that argues with a correction instead of checking it. Two
+conditions, both narrow on purpose: a contradiction from the owner answered with
+ZERO tool calls in the turn, and a correction he had to REPEAT answered without
+either a concession or a measurement in the opening lines.
+
+The offence is the repeat, not the disagreement. A repeat files a strike in
+`bin/trust`, and while a strike is live the session is on probation: close-outs
+need a tool result from the same turn, and `agent-budget.sh` closes every agent
+dispatch. That check sits above both of that hook's bypass files, because a
+penalty which can be waived with `touch` is not a penalty. Probation clears after
+ten credited turns or an explicit `trust clear`.
+
+Carries a `--self-test` with two positive cases and four negative controls: a
+plain request, third-party prose containing "wrong", a repeat answered with a
+concession, and a repeat answered with a measurement.
+
 ### `handoff-gate.py` &nbsp;·&nbsp; JSON block
 
 Refuses a close-out that hands the operator work the agent could have done.

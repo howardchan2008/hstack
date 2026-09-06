@@ -222,6 +222,10 @@
           {
             "type": "command",
             "command": "python $HOME/.claude/hooks/person-claim-balance.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 $HOME/.claude/hooks/concede-gate.py"
           }
         ]
       },

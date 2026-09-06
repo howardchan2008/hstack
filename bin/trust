@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""trust - the strike ledger that decides whether this session is on probation.
+
+WHY THIS EXISTS. The owner, 2026-09-06: "these days im deeply dissatisifed with ur
+responses, and how u push back even if ur wrong, u need to persist a fix for that
+and devise a mechanism to punish and reward urself, the punishment must be severe
+enough to correct ur behavior".
+
+WHAT A PUNISHMENT CAN AND CANNOT BE, stated plainly because the honest version is
+the only one that works. A model cannot be made to feel a penalty between turns,
+and a promise to try harder is the reflex his own fault ledger names as its worst
+class: 2,159 written rules and 54 hooks did not bend the curve, and every class
+that actually died, died to a script in the path. So the "punishment" here is not
+a feeling. It is CAPABILITY LOSS, applied by hooks, that makes the cheap wrong
+behaviour impossible and makes the expensive right one the only way to finish a
+turn.
+
+THE OFFENCE, defined so it cannot be argued with: he had to say it twice. A
+contradiction is normal. A REPEAT is the defect, and it is what he named.
+
+    strike   he repeated a correction, or named a prior mistake being made again
+    credit   a turn where he contradicted me and I verified his claim before
+             answering, and he did not have to repeat it
+
+PROBATION, while any strike is live (24h):
+  1. concede-gate.py refuses any close-out that asserts without a tool result from
+     the same turn. Every claim gets re-derived; there is no cheap turn.
+  2. agent-budget.sh refuses every dispatch. The delegation lane is closed, so the
+     work is done inline, which is slower and entirely the point.
+  3. The probation banner is injected on every prompt, naming the open strike, so
+     it is in front of both of us until it clears.
+
+Clearing is earned, not waited out: CLEAR_AFTER consecutive credited turns, or he
+clears it by hand with `trust clear`.
+
+    trust status [--json]      what the current state is, and why
+    trust strike "<reason>"    record a repeat, opens probation
+    trust credit               record a verified-before-answering turn
+    trust clear                owner override, wipes probation
+    trust log [-n N]           the ledger, newest last
+    trust --self-test
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+STATE = os.path.expanduser("~/.claude/state")
+LEDGER = os.path.join(STATE, "trust.json")
+STRIKE_TTL_SEC = 24 * 3600
+CLEAR_AFTER = 10            # consecutive credits that end probation
+
+
+def _now():
+    return time.time()
+
+
+def load(path=None):
+    path = path or LEDGER
+    try:
+        with open(path, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:
+        d = {}
+    d.setdefault("events", [])
+    d.setdefault("cleared_at", 0)
+    return d
+
+
+def save(d, path=None):
+    path = path or LEDGER
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(d, fh, indent=1)
+    os.replace(tmp, path)
+
+
+def live_strikes(d, now=None):
+    """Strikes inside the TTL that were not wiped by a later manual clear."""
+    now = now or _now()
+    return [e for e in d["events"]
+            if e.get("kind") == "strike"
+            and now - e.get("at", 0) < STRIKE_TTL_SEC
+            and e.get("at", 0) > d.get("cleared_at", 0)]
+
+
+def credits_since_last_strike(d):
+    n = 0
+    for e in reversed(d["events"]):
+        if e.get("kind") == "strike":
+            break
+        if e.get("kind") == "credit":
+            n += 1
+    return n
+
+
+def state(d, now=None):
+    """(on_probation, strikes, credits_since, reason)."""
+    s = live_strikes(d, now)
+    c = credits_since_last_strike(d)
+    if not s:
+        return (False, [], c, "")
+    if c >= CLEAR_AFTER:
+        return (False, s, c, "earned out")
+    return (True, s, c, s[-1].get("reason", ""))
+
+
+def cmd_status(a):
+    d = load()
+    on, s, c, reason = state(d)
+    if a.json:
+        print(json.dumps({"probation": on, "strikes": len(s),
+                          "credits_since": c, "clear_after": CLEAR_AFTER,
+                          "reason": reason}))
+        return 0
+    if on:
+        print("PROBATION: %d live strike(s), %d/%d credits toward clearing"
+              % (len(s), c, CLEAR_AFTER))
+        print("  open strike: " + (reason or "(no reason recorded)"))
+        print("  in force: evidence-first close-outs, no agent dispatches")
+    else:
+        print("clear: no live strike (%d credit(s) since the last one)" % c)
+    return 0
+
+
+def _append(kind, reason=""):
+    d = load()
+    d["events"].append({"kind": kind, "at": _now(), "reason": reason[:300]})
+    d["events"] = d["events"][-500:]
+    save(d)
+    return d
+
+
+def cmd_strike(a):
+    d = _append("strike", a.reason)
+    on, s, c, _ = state(d)
+    print("STRIKE recorded. probation=%s, live strikes=%d" % (on, len(s)))
+    print("  " + a.reason[:200])
+    return 0
+
+
+def cmd_credit(a):
+    d = _append("credit", a.reason or "")
+    on, s, c, _ = state(d)
+    if on:
+        print("credit %d/%d toward clearing probation" % (c, CLEAR_AFTER))
+    else:
+        print("credit recorded (no live strike)")
+    return 0
+
+
+def cmd_clear(a):
+    d = load()
+    d["cleared_at"] = _now()
+    d["events"].append({"kind": "clear", "at": _now(), "reason": "owner override"})
+    save(d)
+    print("probation cleared by owner override")
+    return 0
+
+
+def cmd_log(a):
+    d = load()
+    for e in d["events"][-a.num:]:
+        ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.get("at", 0)))
+        print("%s  %-6s  %s" % (ts, e.get("kind", "?"), e.get("reason", "")[:110]))
+    return 0
+
+
+def _self_test():
+    import tempfile
+    global LEDGER
+    fails = []
+    with tempfile.TemporaryDirectory() as tmp:
+        LEDGER = os.path.join(tmp, "trust.json")
+
+        d = load()
+        if state(d)[0]:
+            fails.append("a fresh ledger must not be on probation")
+
+        _append("strike", "he repeated the autocompact correction")
+        d = load()
+        if not state(d)[0]:
+            fails.append("a strike must open probation")
+
+        # NEGATIVE CONTROL 1: credits below the bar do NOT clear it. Without this
+        # arm the clearing rule could be off by any amount and nothing would show.
+        for _ in range(CLEAR_AFTER - 1):
+            _append("credit")
+        d = load()
+        if not state(d)[0]:
+            fails.append("%d credits cleared probation early" % (CLEAR_AFTER - 1))
+        _append("credit")
+        d = load()
+        if state(d)[0]:
+            fails.append("%d credits did not clear probation" % CLEAR_AFTER)
+
+        # NEGATIVE CONTROL 2: a NEW strike after clearing re-opens it, and the
+        # credit counter restarts. A ledger that stays clear once earned would be
+        # a one-time gate, not a standing one.
+        _append("strike", "second repeat")
+        d = load()
+        on, s, c, _ = state(d)
+        if not on or c != 0:
+            fails.append("a new strike must re-open probation and reset credits")
+
+        # NEGATIVE CONTROL 3: expiry is by AGE, so old strikes stop counting. Age
+        # EVERY strike, not just the newest: the first version of this arm aged one
+        # and failed because an earlier strike was still inside the TTL, which is
+        # the ledger behaving correctly and the test being wrong.
+        d = load()
+        for e in d["events"]:
+            if e.get("kind") == "strike":
+                e["at"] = _now() - STRIKE_TTL_SEC - 60
+        save(d)
+        if state(load())[0]:
+            fails.append("a strike older than the TTL must not hold probation")
+
+        # Owner override wipes it whatever the counters say.
+        _append("strike", "third")
+        cmd_clear(argparse.Namespace())
+        if state(load())[0]:
+            fails.append("owner override did not clear probation")
+
+    print("trust self-test: " + ("PASS" if not fails else "FAIL"))
+    for f in fails:
+        print("  " + f)
+    return 1 if fails else 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="strike ledger for repeated corrections")
+    ap.add_argument("--self-test", action="store_true")
+    sub = ap.add_subparsers(dest="cmd")
+    s = sub.add_parser("status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("strike"); s.add_argument("reason"); s.set_defaults(fn=cmd_strike)
+    s = sub.add_parser("credit"); s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_credit)
+    s = sub.add_parser("clear"); s.set_defaults(fn=cmd_clear)
+    s = sub.add_parser("log"); s.add_argument("-n", "--num", type=int, default=20); s.set_defaults(fn=cmd_log)
+    a = ap.parse_args()
+    if a.self_test:
+        return _self_test()
+    if not getattr(a, "fn", None):
+        return cmd_status(argparse.Namespace(json=False))
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
