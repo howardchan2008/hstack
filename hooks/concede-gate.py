@@ -112,10 +112,17 @@ def _turn_stats(transcript_path):
 
 
 def on_probation():
+    """True when the score has dropped below the standard.
+
+    Reads `evidence_first`, not `probation`: the tier where close-outs start
+    needing a tool RESULT is WATCH (score 70 to 84), one band ABOVE the tier that
+    closes agent dispatches. Keying this on probation would have let the whole
+    70-to-84 band answer from memory, which is the behaviour being penalised.
+    """
     try:
         r = subprocess.run([TRUST, "status", "--json"], capture_output=True,
                            text=True, timeout=10)
-        return bool(json.loads(r.stdout or "{}").get("probation"))
+        return bool(json.loads(r.stdout or "{}").get("evidence_first"))
     except Exception:
         return False
 

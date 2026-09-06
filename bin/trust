@@ -1,55 +1,106 @@
 #!/usr/bin/env python3
-"""trust - the strike ledger that decides whether this session is on probation.
+"""trust - a running SCORE for this agent, with tiers that cost something.
 
 WHY THIS EXISTS. The owner, 2026-09-06: "these days im deeply dissatisifed with ur
-responses, and how u push back even if ur wrong, u need to persist a fix for that
-and devise a mechanism to punish and reward urself, the punishment must be severe
-enough to correct ur behavior".
+responses, and how u push back even if ur wrong ... devise a mechanism to punish
+and reward urself, the punishment must be severe enough to correct ur behavior",
+then: "actually u need a point system then, u need to be motivated to stay above a
+certain standard, and maintain that standard, prevent known failure modes, and
+constantly surveil for new ones".
 
-WHAT A PUNISHMENT CAN AND CANNOT BE, stated plainly because the honest version is
-the only one that works. A model cannot be made to feel a penalty between turns,
-and a promise to try harder is the reflex his own fault ledger names as its worst
-class: 2,159 written rules and 54 hooks did not bend the curve, and every class
-that actually died, died to a script in the path. So the "punishment" here is not
-a feeling. It is CAPABILITY LOSS, applied by hooks, that makes the cheap wrong
-behaviour impossible and makes the expensive right one the only way to finish a
-turn.
+FOUR THINGS HE ASKED FOR, AND WHERE EACH ONE LIVES.
+  a point system         SCORE, 0 to 100, starts at 100, rolling 7 days
+  a standard to hold     STANDARD = 85. Below it the tiers bite, in code.
+  prevent known modes    DEDUCTIONS are keyed to the fault ledger's own class
+                         names, and `trust sync` reads guard refusals out of the
+                         live transcripts, so every blocking hook feeds the score
+                         without each one having to be edited.
+  surveil for new ones   `trust surveil` diffs the ledger's active classes against
+                         the detectors that cover them. A class with recent hits
+                         and no detector is named UNCOVERED, which is the standing
+                         work item until something in the path stops it.
 
-THE OFFENCE, defined so it cannot be argued with: he had to say it twice. A
-contradiction is normal. A REPEAT is the defect, and it is what he named.
+WHAT A PENALTY CAN BE. A model does not carry a feeling between turns, so points
+alone would be theatre. Each tier therefore removes a capability, enforced by the
+hooks that read this file:
 
-    strike   he repeated a correction, or named a prior mistake being made again
-    credit   a turn where he contradicted me and I verified his claim before
-             answering, and he did not have to repeat it
+  >= 85  CLEAR      normal operation
+  70-84  WATCH      concede-gate demands a tool RESULT in every close-out
+  50-69  PROBATION  the above, plus agent-budget closes every dispatch
+  < 50   LOCKDOWN   the above, plus new-feature work is refused: clear the open
+                    deductions first, and name them in the close-out
 
-PROBATION, while any strike is live (24h):
-  1. concede-gate.py refuses any close-out that asserts without a tool result from
-     the same turn. Every claim gets re-derived; there is no cheap turn.
-  2. agent-budget.sh refuses every dispatch. The delegation lane is closed, so the
-     work is done inline, which is slower and entirely the point.
-  3. The probation banner is injected on every prompt, naming the open strike, so
-     it is in front of both of us until it clears.
+RECOVERY IS EARNED, NOT WAITED OUT. Awards need evidence: a verified correction, a
+shipped fix, a newly gated failure mode. There is no passive healing, because a
+clock that restores the score rewards doing nothing. Events age out after a week,
+which keeps the score a picture of NOW rather than a permanent record.
 
-Clearing is earned, not waited out: CLEAR_AFTER consecutive credited turns, or he
-clears it by hand with `trust clear`.
-
-    trust status [--json]      what the current state is, and why
-    trust strike "<reason>"    record a repeat, opens probation
-    trust credit               record a verified-before-answering turn
-    trust clear                owner override, wipes probation
-    trust log [-n N]           the ledger, newest last
-    trust --self-test
+    trust status [--json]        score, tier, what it costs, what clears it
+    trust deduct CLASS [N] "why" record a fault (CLASS from the fault ledger)
+    trust award KIND [N] "why"   record evidence of a fix
+    trust strike "why"           shorthand for the repeat-correction deduction
+    trust credit ["why"]         shorthand for verified-before-answering
+    trust sync [--since H]       mine guard refusals from transcripts, once each
+    trust surveil                classes with no detector: the new-mode hunt
+    trust log [-n N] | trust clear | trust --self-test
 """
 import argparse
+import glob
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 
 STATE = os.path.expanduser("~/.claude/state")
 LEDGER = os.path.join(STATE, "trust.json")
-STRIKE_TTL_SEC = 24 * 3600
-CLEAR_AFTER = 10            # consecutive credits that end probation
+
+START = 100
+STANDARD = 85
+TIERS = ((85, "CLEAR"), (70, "WATCH"), (50, "PROBATION"), (0, "LOCKDOWN"))
+EVENT_TTL_SEC = 7 * 24 * 3600      # the score is a ROLLING WEEK, not a lifetime
+
+# Deduction weights, keyed to the fault ledger's own class names so the two stores
+# cannot drift apart. Severity follows the ledger: a repeat after a correction is
+# the worst, because he already spent a turn on it once.
+WEIGHTS = {
+    "repeated-defect-after-correction": 15,
+    "claimed-without-verifying": 10,
+    "ignored-what-he-already-said": 8,
+    "did-not-do-what-was-asked": 8,
+    "unverified-external-state": 6,
+    "asked-instead-of-deciding": 5,
+    "handed-work-back-that-was-mine": 5,
+    "scope-drift-or-overreach": 3,
+    "style-and-register": 3,
+    "wrong-lane-or-rebuilt-what-exists": 3,
+    "guard-block": 2,                     # a hook had to refuse the output
+}
+DEFAULT_DEDUCT = 5                        # an unnamed class is never free
+AWARDS = {
+    "verified-before-answering": 2,
+    "shipped-fix": 3,
+    "new-failure-mode-gated": 5,
+}
+DEFAULT_AWARD = 2
+
+# class -> the detector that PREVENTS it. An empty string means nothing covers it,
+# which is exactly what `surveil` exists to surface.
+DETECTORS = {
+    "repeated-defect-after-correction": "hooks/concede-gate.py",
+    "claimed-without-verifying": "hooks/capability-claim-gate.py + STATE-VERIFY",
+    "ignored-what-he-already-said": "hooks/closeout-shape.py R8",
+    "did-not-do-what-was-asked": "hooks/item-coverage.py + prompt-items.py",
+    "asked-instead-of-deciding": "hooks/closeout-shape.py R3/R6",
+    "handed-work-back-that-was-mine": "hooks/handoff-gate.py",
+    "style-and-register": "bin/copy-lint + hooks/dash-gate.sh",
+    "unverified-external-state": "bin/verify-live.sh",
+    "scope-drift-or-overreach": "",
+    "wrong-lane-or-rebuilt-what-exists": "",
+    "documented-defect-no-transcript": "",
+    "retracted-judgement-in-sot": "",
+}
 
 
 def _now():
@@ -57,14 +108,14 @@ def _now():
 
 
 def load(path=None):
-    path = path or LEDGER
     try:
-        with open(path, encoding="utf-8") as fh:
+        with open(path or LEDGER, encoding="utf-8") as fh:
             d = json.load(fh)
     except Exception:
         d = {}
     d.setdefault("events", [])
     d.setdefault("cleared_at", 0)
+    d.setdefault("synced_to", 0)
     return d
 
 
@@ -77,78 +128,108 @@ def save(d, path=None):
     os.replace(tmp, path)
 
 
-def live_strikes(d, now=None):
-    """Strikes inside the TTL that were not wiped by a later manual clear."""
+def live_events(d, now=None):
     now = now or _now()
     return [e for e in d["events"]
-            if e.get("kind") == "strike"
-            and now - e.get("at", 0) < STRIKE_TTL_SEC
-            and e.get("at", 0) > d.get("cleared_at", 0)]
+            if now - e.get("at", 0) < EVENT_TTL_SEC
+            and e.get("at", 0) > d.get("cleared_at", 0)
+            and e.get("kind") in ("deduct", "award")]
 
 
-def credits_since_last_strike(d):
-    n = 0
-    for e in reversed(d["events"]):
-        if e.get("kind") == "strike":
-            break
-        if e.get("kind") == "credit":
-            n += 1
-    return n
+def score(d, now=None):
+    s = START
+    for e in live_events(d, now):
+        s += -e.get("points", 0) if e["kind"] == "deduct" else e.get("points", 0)
+    return max(0, min(START, s))
 
 
-def state(d, now=None):
-    """(on_probation, strikes, credits_since, reason)."""
-    s = live_strikes(d, now)
-    c = credits_since_last_strike(d)
-    if not s:
-        return (False, [], c, "")
-    if c >= CLEAR_AFTER:
-        return (False, s, c, "earned out")
-    return (True, s, c, s[-1].get("reason", ""))
+def tier(s):
+    for floor, name in TIERS:
+        if s >= floor:
+            return name
+    return "LOCKDOWN"
 
 
-def cmd_status(a):
+COSTS = {
+    "CLEAR": [],
+    "WATCH": ["close-outs need a tool RESULT from the same turn"],
+    "PROBATION": ["close-outs need a tool RESULT from the same turn",
+                  "agent dispatches are closed"],
+    "LOCKDOWN": ["close-outs need a tool RESULT from the same turn",
+                 "agent dispatches are closed",
+                 "no new-feature work: clear the open deductions first"],
+}
+
+
+def open_deductions(d, now=None):
+    out = {}
+    for e in live_events(d, now):
+        if e["kind"] != "deduct":
+            continue
+        c = e.get("class", "?")
+        out.setdefault(c, {"n": 0, "points": 0, "last": ""})
+        out[c]["n"] += 1
+        out[c]["points"] += e.get("points", 0)
+        out[c]["last"] = e.get("reason", "")[:120]
+    return out
+
+
+def _append(kind, cls, points, reason=""):
     d = load()
-    on, s, c, reason = state(d)
-    if a.json:
-        print(json.dumps({"probation": on, "strikes": len(s),
-                          "credits_since": c, "clear_after": CLEAR_AFTER,
-                          "reason": reason}))
-        return 0
-    if on:
-        print("PROBATION: %d live strike(s), %d/%d credits toward clearing"
-              % (len(s), c, CLEAR_AFTER))
-        print("  open strike: " + (reason or "(no reason recorded)"))
-        print("  in force: evidence-first close-outs, no agent dispatches")
-    else:
-        print("clear: no live strike (%d credit(s) since the last one)" % c)
-    return 0
-
-
-def _append(kind, reason=""):
-    d = load()
-    d["events"].append({"kind": kind, "at": _now(), "reason": reason[:300]})
-    d["events"] = d["events"][-500:]
+    d["events"].append({"kind": kind, "class": cls, "points": int(points),
+                        "at": _now(), "reason": reason[:300]})
+    d["events"] = d["events"][-1000:]
     save(d)
     return d
 
 
-def cmd_strike(a):
-    d = _append("strike", a.reason)
-    on, s, c, _ = state(d)
-    print("STRIKE recorded. probation=%s, live strikes=%d" % (on, len(s)))
-    print("  " + a.reason[:200])
+def cmd_status(a):
+    d = load()
+    s = score(d)
+    t = tier(s)
+    if getattr(a, "json", False):
+        print(json.dumps({"score": s, "tier": t, "standard": STANDARD,
+                          "probation": t in ("PROBATION", "LOCKDOWN"),
+                          "evidence_first": t != "CLEAR",
+                          "lockdown": t == "LOCKDOWN",
+                          "open": open_deductions(d)}))
+        return 0
+    print("SCORE %d/100  tier %s  (standard %d)  %s"
+          % (s, t, STANDARD, "OK" if s >= STANDARD else "BELOW STANDARD"))
+    for c in COSTS[t]:
+        print("  in force: " + c)
+    op = open_deductions(d)
+    if op:
+        print("  open deductions (rolling 7d):")
+        for c, v in sorted(op.items(), key=lambda kv: -kv[1]["points"]):
+            print("    -%-3d %-36s %s" % (v["points"], c, v["last"]))
+        print("  earn it back: trust award shipped-fix per real fix, trust credit "
+              "when you verify before answering.")
     return 0
+
+
+def cmd_deduct(a):
+    pts = a.points if a.points is not None else WEIGHTS.get(a.cls, DEFAULT_DEDUCT)
+    d = _append("deduct", a.cls, pts, a.reason)
+    print("-%d  %s  ->  score %d (%s)" % (pts, a.cls, score(d), tier(score(d))))
+    return 0
+
+
+def cmd_award(a):
+    pts = a.points if a.points is not None else AWARDS.get(a.kind, DEFAULT_AWARD)
+    d = _append("award", a.kind, pts, a.reason)
+    print("+%d  %s  ->  score %d (%s)" % (pts, a.kind, score(d), tier(score(d))))
+    return 0
+
+
+def cmd_strike(a):
+    return cmd_deduct(argparse.Namespace(
+        cls="repeated-defect-after-correction", points=None, reason=a.reason))
 
 
 def cmd_credit(a):
-    d = _append("credit", a.reason or "")
-    on, s, c, _ = state(d)
-    if on:
-        print("credit %d/%d toward clearing probation" % (c, CLEAR_AFTER))
-    else:
-        print("credit recorded (no live strike)")
-    return 0
+    return cmd_award(argparse.Namespace(
+        kind="verified-before-answering", points=None, reason=a.reason or ""))
 
 
 def cmd_clear(a):
@@ -156,7 +237,7 @@ def cmd_clear(a):
     d["cleared_at"] = _now()
     d["events"].append({"kind": "clear", "at": _now(), "reason": "owner override"})
     save(d)
-    print("probation cleared by owner override")
+    print("cleared by owner override, score back to %d" % score(load()))
     return 0
 
 
@@ -164,7 +245,99 @@ def cmd_log(a):
     d = load()
     for e in d["events"][-a.num:]:
         ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.get("at", 0)))
-        print("%s  %-6s  %s" % (ts, e.get("kind", "?"), e.get("reason", "")[:110]))
+        sign = {"deduct": "-", "award": "+"}.get(e.get("kind"), " ")
+        print("%s  %s%-3s %-34s %s" % (ts, sign, e.get("points", ""),
+                                       e.get("class", e.get("kind", "")),
+                                       e.get("reason", "")[:90]))
+    return 0
+
+
+# ------------------------------------------------------------- known modes
+# Every blocking hook writes its refusal into the transcript, so the score can
+# read them from ONE place instead of each hook learning to report. A hook added
+# next month is counted the first time it fires.
+BLOCK_RE = re.compile(
+    r"(CONCEDE-GATE|CLOSE-OUT SHAPE|ITEM COVERAGE|HANDING BACK WORK|"
+    r"capability-claim-gate|figure-source-gate|dash-gate|copy-lint refused)", re.I)
+
+
+def cmd_sync(a):
+    d = load()
+    since = max(d.get("synced_to", 0), _now() - a.since * 3600)
+    newest, found = since, 0
+    for p in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):
+        try:
+            if os.path.getmtime(p) < since:
+                continue
+        except OSError:
+            continue
+        try:
+            fh = open(p, errors="ignore")
+        except OSError:
+            continue
+        with fh:
+            for ln in fh:
+                if not BLOCK_RE.search(ln):
+                    continue
+                try:
+                    o = json.loads(ln)
+                except Exception:
+                    continue
+                ts = str(o.get("timestamp") or "")
+                try:
+                    at = time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
+                except Exception:
+                    continue
+                if at <= since:
+                    continue
+                newest = max(newest, at)
+                found += 1
+    if found:
+        _append("deduct", "guard-block",
+                WEIGHTS["guard-block"] * min(found, 5),
+                "%d guard refusal(s) since the last sync" % found)
+    d = load()
+    d["synced_to"] = newest
+    save(d)
+    print("sync: %d guard refusal(s) counted, score %d (%s)"
+          % (found, score(d), tier(score(d))))
+    return 0
+
+
+# --------------------------------------------------------------- new modes
+def parse_categories(text):
+    """Rows of `faults categories`: (class, lifetime, week, rectification)."""
+    rows = []
+    for ln in text.splitlines()[1:]:
+        m = re.match(r"^(\S+)\s+(\d+)\s+(\d+)\s*(.*)$", ln.strip())
+        if m:
+            rows.append((m.group(1), int(m.group(2)), int(m.group(3)), m.group(4).strip()))
+    return rows
+
+
+def uncovered(rows):
+    """Active classes with no detector, in either this file or the ledger."""
+    return [r for r in rows if r[2] > 0 and not (DETECTORS.get(r[0]) or r[3])]
+
+
+def cmd_surveil(a):
+    try:
+        out = subprocess.run([os.path.expanduser("~/bin/faults"), "categories"],
+                             capture_output=True, text=True, timeout=90).stdout
+    except Exception:
+        out = ""
+    rows = parse_categories(out)
+    if not rows:
+        print("surveil: the fault ledger returned no categories (is `faults` on PATH?)")
+        return 1
+    gaps = uncovered(rows)
+    print("surveil: %d active class(es), %d with NO detector"
+          % (sum(1 for r in rows if r[2] > 0), len(gaps)))
+    for cls, all_n, week_n, _ in sorted(gaps, key=lambda r: -r[2]):
+        print("  UNCOVERED  %-38s %4d this week, %6d lifetime" % (cls, week_n, all_n))
+    if gaps:
+        print("  Each line is a failure mode with nothing in the path to stop it.")
+        print("  Gate one, then claim it: trust award new-failure-mode-gated 5 \"<class>: <hook>\"")
     return 0
 
 
@@ -172,56 +345,67 @@ def _self_test():
     import tempfile
     global LEDGER
     fails = []
+
+    def ck(cond, msg):
+        if not cond:
+            fails.append(msg)
+
     with tempfile.TemporaryDirectory() as tmp:
         LEDGER = os.path.join(tmp, "trust.json")
 
-        d = load()
-        if state(d)[0]:
-            fails.append("a fresh ledger must not be on probation")
+        ck(score(load()) == START, "a fresh ledger must score %d" % START)
 
-        _append("strike", "he repeated the autocompact correction")
-        d = load()
-        if not state(d)[0]:
-            fails.append("a strike must open probation")
+        # Tier boundaries, each exercised, so an off-by-one cannot hide.
+        ck(tier(85) == "CLEAR" and tier(84) == "WATCH", "the 85 boundary is wrong")
+        ck(tier(70) == "WATCH" and tier(69) == "PROBATION", "the 70 boundary is wrong")
+        ck(tier(50) == "PROBATION" and tier(49) == "LOCKDOWN", "the 50 boundary is wrong")
 
-        # NEGATIVE CONTROL 1: credits below the bar do NOT clear it. Without this
-        # arm the clearing rule could be off by any amount and nothing would show.
-        for _ in range(CLEAR_AFTER - 1):
-            _append("credit")
-        d = load()
-        if not state(d)[0]:
-            fails.append("%d credits cleared probation early" % (CLEAR_AFTER - 1))
-        _append("credit")
-        d = load()
-        if state(d)[0]:
-            fails.append("%d credits did not clear probation" % CLEAR_AFTER)
+        # One repeat costs 15 and lands exactly ON the standard: a band, not a
+        # hair trigger. Two more and the capability loss starts.
+        cmd_strike(argparse.Namespace(reason="he repeated the autocompact correction"))
+        ck(score(load()) == 85, "one strike should land on 85, got %d" % score(load()))
+        cmd_strike(argparse.Namespace(reason="second"))
+        ck(tier(score(load())) == "WATCH", "two strikes must be WATCH")
+        cmd_strike(argparse.Namespace(reason="third"))
+        ck(tier(score(load())) == "PROBATION", "three strikes must be PROBATION")
+        ck("agent dispatches are closed" in COSTS["PROBATION"],
+           "probation must close dispatches")
+        ck("no new-feature work: clear the open deductions first" in COSTS["LOCKDOWN"],
+           "lockdown must stop new-feature work")
 
-        # NEGATIVE CONTROL 2: a NEW strike after clearing re-opens it, and the
-        # credit counter restarts. A ledger that stays clear once earned would be
-        # a one-time gate, not a standing one.
-        _append("strike", "second repeat")
-        d = load()
-        on, s, c, _ = state(d)
-        if not on or c != 0:
-            fails.append("a new strike must re-open probation and reset credits")
+        # NEGATIVE CONTROL: awards climb back and the ceiling holds.
+        for _ in range(30):
+            cmd_award(argparse.Namespace(kind="shipped-fix", points=None, reason="x"))
+        ck(score(load()) == START, "awards must cap at %d, got %d" % (START, score(load())))
 
-        # NEGATIVE CONTROL 3: expiry is by AGE, so old strikes stop counting. Age
-        # EVERY strike, not just the newest: the first version of this arm aged one
-        # and failed because an earlier strike was still inside the TTL, which is
-        # the ledger behaving correctly and the test being wrong.
+        # NEGATIVE CONTROL: events older than the window stop counting, so the
+        # score is a rolling week rather than a permanent record.
         d = load()
         for e in d["events"]:
-            if e.get("kind") == "strike":
-                e["at"] = _now() - STRIKE_TTL_SEC - 60
+            e["at"] = _now() - EVENT_TTL_SEC - 60
         save(d)
-        if state(load())[0]:
-            fails.append("a strike older than the TTL must not hold probation")
+        ck(score(load()) == START, "expired events must not hold the score down")
 
-        # Owner override wipes it whatever the counters say.
-        _append("strike", "third")
+        # NEGATIVE CONTROL: an unnamed class still deducts the default, so a new
+        # failure mode is never silently free.
+        cmd_deduct(argparse.Namespace(cls="brand-new-mode", points=None, reason="x"))
+        ck(score(load()) == START - DEFAULT_DEDUCT,
+           "an unknown class must take the default %d" % DEFAULT_DEDUCT)
+
         cmd_clear(argparse.Namespace())
-        if state(load())[0]:
-            fails.append("owner override did not clear probation")
+        ck(score(load()) == START, "owner override must restore the score")
+
+    # SURVEILLANCE, on a fixture rather than the live ledger: a class with hits
+    # this week and no detector is UNCOVERED; one carrying a rectification is
+    # not, and neither is a class that has gone quiet.
+    fixture = ("category all 7d rectification\n"
+               "retracted-judgement-in-sot 317 317 \n"
+               "style-and-register 266 37 copy-lint + writing-style.md\n"
+               "sleeping-class 12 0 \n")
+    rows = parse_categories(fixture)
+    names = [r[0] for r in uncovered(rows)]
+    ck(names == ["retracted-judgement-in-sot"],
+       "surveil must name exactly the active, undetected class, got %s" % names)
 
     print("trust self-test: " + ("PASS" if not fails else "FAIL"))
     for f in fails:
@@ -230,12 +414,20 @@ def _self_test():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="strike ledger for repeated corrections")
+    ap = argparse.ArgumentParser(description="score, tiers and surveillance for this agent")
     ap.add_argument("--self-test", action="store_true")
     sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("deduct"); s.add_argument("cls"); s.add_argument("points", nargs="?", type=int)
+    s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_deduct)
+    s = sub.add_parser("award"); s.add_argument("kind"); s.add_argument("points", nargs="?", type=int)
+    s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_award)
     s = sub.add_parser("strike"); s.add_argument("reason"); s.set_defaults(fn=cmd_strike)
     s = sub.add_parser("credit"); s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_credit)
+    s = sub.add_parser("sync"); s.add_argument("--since", type=float, default=24.0,
+                                               help="hours to look back on a first run")
+    s.set_defaults(fn=cmd_sync)
+    s = sub.add_parser("surveil"); s.set_defaults(fn=cmd_surveil)
     s = sub.add_parser("clear"); s.set_defaults(fn=cmd_clear)
     s = sub.add_parser("log"); s.add_argument("-n", "--num", type=int, default=20); s.set_defaults(fn=cmd_log)
     a = ap.parse_args()

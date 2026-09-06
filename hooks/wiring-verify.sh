@@ -367,6 +367,19 @@ _failed="$(launchctl list 2>/dev/null | awk -v re="${WIRING_VERIFY_JOB_PREFIX:-}
   | tr '\n' ' ')"
 [ -n "$_failed" ] && printf 'wiring-verify: scheduled job(s) last exited non-zero: %s\n' "$_failed"
 
+# --- the score, and a self-maintaining sync ---------------------------------------
+# Added 2026-09-06 with the point system. A score is only a lever if it is in front
+# of me, so one line prints at every session start. The guard-refusal sync is the
+# expensive half (it walks the transcripts), so it runs at most every six hours and
+# in the background: a session start must never wait on it.
+if [ -x "$HOME/.claude/bin/trust" ]; then
+  printf 'wiring-verify: trust %s\n' "$("$HOME/.claude/bin/trust" status 2>/dev/null | head -1)"
+  _tsync="$(python3 -c 'import json,os,time;p=os.path.expanduser("~/.claude/state/trust.json");print(int(time.time()-json.load(open(p)).get("synced_to",0)) if os.path.exists(p) else 999999)' 2>/dev/null || echo 999999)"
+  if [ "${_tsync:-999999}" -gt 21600 ]; then
+    ( "$HOME/.claude/bin/trust" sync --since 24 >/dev/null 2>&1 & ) >/dev/null 2>&1
+  fi
+fi
+
 # --- auto-compact: the window and the trigger are TWO knobs ------------------------
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW is the WINDOW (it is also the denominator in the
 # /context readout) and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is the TRIGGER, applied as
