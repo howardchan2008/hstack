@@ -45,6 +45,7 @@ which keeps the score a picture of NOW rather than a permanent record.
     trust log [-n N] | trust clear | trust --self-test
 """
 import argparse
+import collections
 import glob
 import json
 import os
@@ -60,6 +61,8 @@ START = 100
 STANDARD = 85
 TIERS = ((85, "CLEAR"), (70, "WATCH"), (50, "PROBATION"), (0, "LOCKDOWN"))
 EVENT_TTL_SEC = 7 * 24 * 3600      # the score is a ROLLING WEEK, not a lifetime
+K_RATE = 25                        # points-per-message scale, swept on real days
+MIN_WORKLOAD = 20                  # denominator floor, so a quiet day is not noise
 
 # Deduction weights, keyed to the fault ledger's own class names so the two stores
 # cannot drift apart. Severity follows the ledger: a repeat after a correction is
@@ -136,11 +139,82 @@ def live_events(d, now=None):
             and e.get("kind") in ("deduct", "award")]
 
 
-def score(d, now=None):
-    s = START
+def workload(now=None):
+    """His real prompts in the window. The denominator, so the score is a RATE.
+
+    BACKTESTED 2026-09-06 against nine days of transcripts and his own tone.
+    The first calibration subtracted raw points from 100 and FLOORED AT ZERO on
+    five of nine days: a score pinned at its limit measures the limit, not the
+    behaviour, which is the cap-is-a-floor rule turned on its own instrument.
+    Correlation against how often he pushed back was only rho -0.35. Dividing by
+    his message count, scaling by K_RATE=25, and counting one MOMENT per class
+    rather than one row gives rho -0.77 over the same nine days, zero floored
+    days and a 43 to 92 spread, so good days and bad days are distinguishable.
+    Re-run it any time with `trust backtest`; the sweep that picked K is in the
+    close-out for 2026-09-06 (k=100 floors 6 of 9 days, k=25 floors none).
+    """
+    now = now or _now()
+    cut = now - EVENT_TTL_SEC
+    n = 0
+    for p in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):
+        try:
+            if os.path.getmtime(p) < cut:
+                continue
+        except OSError:
+            continue
+        try:
+            fh = open(p, errors="ignore")
+        except OSError:
+            continue
+        with fh:
+            for ln in fh:
+                if '"type":"user"' not in ln and '"type": "user"' not in ln:
+                    continue
+                try:
+                    o = json.loads(ln)
+                except Exception:
+                    continue
+                if o.get("type") != "user":
+                    continue
+                c = (o.get("message") or {}).get("content")
+                if isinstance(c, list):
+                    if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
+                        continue
+                    t = " ".join(b.get("text", "") for b in c
+                                 if isinstance(b, dict) and b.get("type") == "text")
+                elif isinstance(c, str):
+                    t = c
+                else:
+                    continue
+                if not t or t.lstrip().startswith(("<", "[", "Stop hook", "Caveat")):
+                    continue
+                try:
+                    at = time.mktime(time.strptime(str(o.get("timestamp"))[:19],
+                                                   "%Y-%m-%dT%H:%M:%S"))
+                except Exception:
+                    continue
+                if at >= cut:
+                    n += 1
+    return n
+
+
+def raw_points(d, now=None):
+    """(deducted, awarded) inside the window."""
+    ded = aw = 0
     for e in live_events(d, now):
-        s += -e.get("points", 0) if e["kind"] == "deduct" else e.get("points", 0)
-    return max(0, min(START, s))
+        if e["kind"] == "deduct":
+            ded += e.get("points", 0)
+        else:
+            aw += e.get("points", 0)
+    return ded, aw
+
+
+def score(d, now=None, msgs=None):
+    ded, aw = raw_points(d, now)
+    effective = max(0, ded - aw)
+    n = msgs if msgs is not None else workload(now)
+    n = max(n, MIN_WORKLOAD)          # a two-prompt day cannot swing the score
+    return int(round(max(0, min(START, START - K_RATE * effective / n))))
 
 
 def tier(s):
@@ -395,6 +469,119 @@ def cmd_surveil(a):
     return 0
 
 
+# ---------------------------------------------------------------- backtest
+# His tone is the only ground truth available for "was he satisfied". These are
+# markers of him pushing back, not of anger: the rate matters, not any one word.
+NEG = re.compile(r"\b(wrong|again|omfg|wtf|fuck|shit|unacceptable|didnt|didn't|"
+                 r"u never|terrible|ridiculous|dissatisf|apologi[sz]e|no+\b|nope|"
+                 r"hallucinat)\b", re.I)
+POS = re.compile(r"\b(nice|great|perfect|thanks|thank u|good job|well done|love it|"
+                 r"awesome|excellent|correct|exactly|ok good)\b", re.I)
+
+
+def _spearman(xs, ys):
+    def rank(v):
+        order = sorted(range(len(v)), key=lambda i: v[i])
+        r = [0] * len(v)
+        for i, j in enumerate(order):
+            r[j] = i
+        return r
+    n = len(xs)
+    if n < 3:
+        return 0.0
+    rx, ry = rank(xs), rank(ys)
+    d2 = sum((rx[i] - ry[i]) ** 2 for i in range(n))
+    return 1 - 6 * d2 / (n * (n * n - 1))
+
+
+def daily_facts(days_back=9):
+    """Per day: incidents by class (deduped by moment), his prompts, his tone."""
+    faults = collections.defaultdict(collections.Counter)
+    seen = set()
+    try:
+        store = json.load(open(FAULTS_JSON, encoding="utf-8"))
+        rows = store.get("faults") or {}
+        for r in (rows.values() if isinstance(rows, dict) else rows):
+            ts = str(r.get("ts") or "")[:19]
+            if not ts:
+                continue
+            key = (ts[:10], r.get("category"), ts)
+            if key in seen:          # one bulk ingest is one moment, not N faults
+                continue
+            seen.add(key)
+            faults[ts[:10]][r.get("category") or "?"] += 1
+    except Exception:
+        pass
+    msgs = collections.defaultdict(lambda: [0, 0, 0])
+    cut = _now() - (days_back + 5) * 86400
+    for p in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):
+        try:
+            if os.path.getmtime(p) < cut:
+                continue
+        except OSError:
+            continue
+        try:
+            fh = open(p, errors="ignore")
+        except OSError:
+            continue
+        with fh:
+            for ln in fh:
+                if '"type":"user"' not in ln and '"type": "user"' not in ln:
+                    continue
+                try:
+                    o = json.loads(ln)
+                except Exception:
+                    continue
+                if o.get("type") != "user":
+                    continue
+                c = (o.get("message") or {}).get("content")
+                if isinstance(c, list):
+                    if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
+                        continue
+                    t = " ".join(b.get("text", "") for b in c
+                                 if isinstance(b, dict) and b.get("type") == "text")
+                elif isinstance(c, str):
+                    t = c
+                else:
+                    continue
+                if not t or t.lstrip().startswith(("<", "[", "Stop hook", "Caveat")):
+                    continue
+                day = str(o.get("timestamp") or "")[:10]
+                if not day:
+                    continue
+                m = msgs[day]
+                m[0] += 1
+                m[1] += bool(NEG.search(t))
+                m[2] += bool(POS.search(t))
+    return faults, msgs
+
+
+def cmd_backtest(a):
+    faults, msgs = daily_facts(a.days)
+    days = sorted(set(list(faults) + list(msgs)))[-a.days:]
+    print("%-12s%6s%8s%7s%6s%6s  %s"
+          % ("day", "score", "points", "prompts", "neg", "pos", "top class"))
+    sc_list, neg_list = [], []
+    for day in days:
+        ded = faults.get(day, {})
+        pts = sum(WEIGHTS.get(c, DEFAULT_DEDUCT) * n for c, n in ded.items())
+        m = msgs.get(day, [0, 0, 0])
+        n = max(m[0], MIN_WORKLOAD)
+        sc = int(round(max(0, min(START, START - K_RATE * pts / n))))
+        top = max(ded.items(), key=lambda kv: WEIGHTS.get(kv[0], DEFAULT_DEDUCT) * kv[1])[0] if ded else "-"
+        print("%-12s%6d%8d%7d%6d%6d  %s" % (day, sc, pts, m[0], m[1], m[2], top[:36]))
+        if m[0] >= 5:
+            sc_list.append(sc)
+            neg_list.append(100.0 * m[1] / m[0])
+    if len(sc_list) >= 3:
+        r = _spearman(sc_list, neg_list)
+        print("\nSpearman rho(score, his push-back rate) = %+.2f over %d day(s)"
+              % (r, len(sc_list)))
+        print("Negative is the wanted direction. Floored days: %d (a floored score "
+              "measures the limit, not the work)." % sum(1 for s in sc_list if s == 0))
+    return 0
+
+
 def _self_test():
     import tempfile
     global LEDGER
@@ -414,14 +601,34 @@ def _self_test():
         ck(tier(70) == "WATCH" and tier(69) == "PROBATION", "the 70 boundary is wrong")
         ck(tier(50) == "PROBATION" and tier(49) == "LOCKDOWN", "the 50 boundary is wrong")
 
-        # One repeat costs 15 and lands exactly ON the standard: a band, not a
-        # hair trigger. Two more and the capability loss starts.
+        # THE SCORE IS A RATE. One repeat (15 points) against a 100-prompt week is
+        # 100 - 25*15/100 = 96 and stays CLEAR; the same repeat against a 20-prompt
+        # week is 81 and drops to WATCH. Same fault, different share of the work.
         cmd_strike(argparse.Namespace(reason="he repeated the autocompact correction"))
-        ck(score(load()) == 85, "one strike should land on 85, got %d" % score(load()))
-        cmd_strike(argparse.Namespace(reason="second"))
-        ck(tier(score(load())) == "WATCH", "two strikes must be WATCH")
-        cmd_strike(argparse.Namespace(reason="third"))
-        ck(tier(score(load())) == "PROBATION", "three strikes must be PROBATION")
+        ck(score(load(), msgs=100) == 96,
+           "one strike in a busy week should be 96, got %d" % score(load(), msgs=100))
+        ck(tier(score(load(), msgs=100)) == "CLEAR", "96 must stay CLEAR")
+        ck(score(load(), msgs=20) == 81,
+           "one strike in a quiet week should be 81, got %d" % score(load(), msgs=20))
+
+        # NEGATIVE CONTROL, the property the backtest was run to get: volume must
+        # not decide the score. Four times the faults over four times the work
+        # scores the same as one over one.
+        for _ in range(3):
+            cmd_strike(argparse.Namespace(reason="same rate, more volume"))
+        ck(score(load(), msgs=80) == 81,
+           "4 strikes over 80 prompts must equal 1 over 20, got %d" % score(load(), msgs=80))
+
+        # Tier walk on one fixed workload: 4 repeats over 30 prompts is 50
+        # (PROBATION), 6 is 25 (LOCKDOWN). Both bands exercised on real numbers.
+        ck(tier(score(load(), msgs=30)) == "PROBATION",
+           "4 strikes against 30 prompts must be PROBATION, got %d"
+           % score(load(), msgs=30))
+        cmd_strike(argparse.Namespace(reason="fifth"))
+        cmd_strike(argparse.Namespace(reason="sixth"))
+        ck(tier(score(load(), msgs=30)) == "LOCKDOWN",
+           "6 strikes against 30 prompts must be LOCKDOWN, got %d"
+           % score(load(), msgs=30))
         ck("agent dispatches are closed" in COSTS["PROBATION"],
            "probation must close dispatches")
         ck("no new-feature work: clear the open deductions first" in COSTS["LOCKDOWN"],
@@ -443,8 +650,9 @@ def _self_test():
         # NEGATIVE CONTROL: an unnamed class still deducts the default, so a new
         # failure mode is never silently free.
         cmd_deduct(argparse.Namespace(cls="brand-new-mode", points=None, reason="x"))
-        ck(score(load()) == START - DEFAULT_DEDUCT,
-           "an unknown class must take the default %d" % DEFAULT_DEDUCT)
+        ck(raw_points(load())[0] == DEFAULT_DEDUCT,
+           "an unknown class must take the default %d, got %d"
+           % (DEFAULT_DEDUCT, raw_points(load())[0]))
 
         cmd_clear(argparse.Namespace())
         ck(score(load()) == START, "owner override must restore the score")
@@ -497,6 +705,8 @@ def main():
                                                help="hours to look back on a first run")
     s.set_defaults(fn=cmd_sync)
     s = sub.add_parser("surveil"); s.set_defaults(fn=cmd_surveil)
+    s = sub.add_parser("backtest"); s.add_argument("--days", type=int, default=9)
+    s.set_defaults(fn=cmd_backtest)
     s = sub.add_parser("clear"); s.set_defaults(fn=cmd_clear)
     s = sub.add_parser("log"); s.add_argument("-n", "--num", type=int, default=20); s.set_defaults(fn=cmd_log)
     a = ap.parse_args()
