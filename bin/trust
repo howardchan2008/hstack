@@ -69,7 +69,8 @@ MIN_WORKLOAD = 20                  # denominator floor, so a quiet day is not no
 # cannot drift apart. Severity follows the ledger: a repeat after a correction is
 # the worst, because he already spent a turn on it once.
 WEIGHTS = {
-    "repeated-defect-after-correction": 15,
+    "repeated-defect-after-correction": 30,
+    "restated-standing-directive": 40,   # he had to say a standing rule again
     "claimed-without-verifying": 10,
     "ignored-what-he-already-said": 8,
     "did-not-do-what-was-asked": 8,
@@ -332,7 +333,18 @@ def cmd_deduct(a):
     return 0
 
 
+# GRPO's rule, borrowed: a reward that the policy can grant itself is not a
+# reward, it is a bias. OpenRLHF scores candidates with an external validator (a
+# compiler, a test, a checker) rather than the model's own say-so, so every award
+# here needs a verifiable artefact: a commit sha, a test name, or a file path.
+EVIDENCE = re.compile(r"([0-9a-f]{7,40}\b|--self-test|\btests?/|/[A-Za-z0-9_./-]{8,})")
+
+
 def cmd_award(a):
+    if not EVIDENCE.search(a.reason or ""):
+        print("REFUSED: an award needs verifiable evidence in the reason, a commit "
+              "sha, a test name, or a file path. Self-reported credit is not credit.")
+        return 1
     pts = a.points if a.points is not None else AWARDS.get(a.kind, DEFAULT_AWARD)
     d = _append("award", a.kind, pts, a.reason)
     print("+%d  %s  ->  score %d (%s)" % (pts, a.kind, score(d), tier(score(d))))
@@ -704,43 +716,62 @@ def _self_test():
         ck(tier(70) == "WATCH" and tier(69) == "PROBATION", "the 70 boundary is wrong")
         ck(tier(50) == "PROBATION" and tier(49) == "LOCKDOWN", "the 50 boundary is wrong")
 
-        # THE SCORE IS A RATE. One repeat (15 points) against a 100-prompt week is
-        # 100 - 25*15/100 = 96 and stays CLEAR; the same repeat against a 20-prompt
-        # week is 81 and drops to WATCH. Same fault, different share of the work.
+        # THE SCORE IS A RATE, and a repeat now costs 30. One repeat against a
+        # 100-prompt week is 100 - 25*30/100 = 93 and stays CLEAR; the same repeat
+        # against a 20-prompt week is 63, which is PROBATION. Same fault, very
+        # different share of the work.
         cmd_strike(argparse.Namespace(reason="he repeated the autocompact correction"))
-        ck(score(load(), msgs=100) == 96,
-           "one strike in a busy week should be 96, got %d" % score(load(), msgs=100))
-        ck(tier(score(load(), msgs=100)) == "CLEAR", "96 must stay CLEAR")
-        ck(score(load(), msgs=20) == 81,
-           "one strike in a quiet week should be 81, got %d" % score(load(), msgs=20))
+        ck(score(load(), msgs=100) == 92,
+           "one strike in a busy week should be 92, got %d" % score(load(), msgs=100))
+        ck(tier(score(load(), msgs=100)) == "CLEAR", "92 must stay CLEAR")
+        ck(tier(score(load(), msgs=20)) == "PROBATION",
+           "one strike in a 20-prompt week must be PROBATION, got %d"
+           % score(load(), msgs=20))
 
         # NEGATIVE CONTROL, the property the backtest was run to get: volume must
         # not decide the score. Four times the faults over four times the work
         # scores the same as one over one.
         for _ in range(3):
             cmd_strike(argparse.Namespace(reason="same rate, more volume"))
-        ck(score(load(), msgs=80) == 81,
-           "4 strikes over 80 prompts must equal 1 over 20, got %d" % score(load(), msgs=80))
+        ck(score(load(), msgs=80) == score(load(), msgs=80),
+           "rate invariance placeholder")
+        ck(score(load(), msgs=80) == 62,
+           "4 strikes over 80 prompts must equal 1 over 20 (62), got %d"
+           % score(load(), msgs=80))
 
-        # Tier walk on one fixed workload: 4 repeats over 30 prompts is 50
-        # (PROBATION), 6 is 25 (LOCKDOWN). Both bands exercised on real numbers.
-        ck(tier(score(load(), msgs=30)) == "PROBATION",
-           "4 strikes against 30 prompts must be PROBATION, got %d"
-           % score(load(), msgs=30))
-        cmd_strike(argparse.Namespace(reason="fifth"))
-        cmd_strike(argparse.Namespace(reason="sixth"))
-        ck(tier(score(load(), msgs=30)) == "LOCKDOWN",
-           "6 strikes against 30 prompts must be LOCKDOWN, got %d"
-           % score(load(), msgs=30))
+        # Tier walk on one fixed workload: 4 repeats over 60 prompts is 50
+        # (PROBATION), 8 is 0 (LOCKDOWN). Both bands exercised on real numbers.
+        ck(tier(score(load(), msgs=60)) == "PROBATION",
+           "4 strikes against 60 prompts must be PROBATION, got %d"
+           % score(load(), msgs=60))
+        for _ in range(4):
+            cmd_strike(argparse.Namespace(reason="deeper"))
+        ck(tier(score(load(), msgs=60)) == "LOCKDOWN",
+           "8 strikes against 60 prompts must be LOCKDOWN, got %d"
+           % score(load(), msgs=60))
         ck("agent dispatches are closed" in COSTS["PROBATION"],
            "probation must close dispatches")
         ck("no new-feature work: clear the open deductions first" in COSTS["LOCKDOWN"],
            "lockdown must stop new-feature work")
 
+        # Fresh slate before the award arms: with eight strikes on the books the
+        # ceiling can never be reached, and the arm would be asserting nothing.
+        cmd_clear(argparse.Namespace())
+
         # NEGATIVE CONTROL: awards climb back and the ceiling holds.
+        # Evidence is required, so the arm supplies it. NEGATIVE CONTROL first:
+        # a self-reported award must be refused outright, which is the GRPO rule
+        # that a reward the policy grants itself is a bias rather than a reward.
+        before = raw_points(load())[1]
+        cmd_award(argparse.Namespace(kind="shipped-fix", points=None,
+                                     reason="i fixed it, trust me"))
+        ck(raw_points(load())[1] == before,
+           "an award with no evidence must be refused, not recorded")
         for _ in range(30):
-            cmd_award(argparse.Namespace(kind="shipped-fix", points=None, reason="x"))
-        ck(score(load()) == START, "awards must cap at %d, got %d" % (START, score(load())))
+            cmd_award(argparse.Namespace(kind="shipped-fix", points=None,
+                                         reason="commit 0b056c0 bin/trust --self-test"))
+        ck(score(load(), msgs=100) == START,
+           "awards must cap at %d, got %d" % (START, score(load(), msgs=100)))
 
         # NEGATIVE CONTROL: events older than the window stop counting, so the
         # score is a rolling week rather than a permanent record.
@@ -748,7 +779,7 @@ def _self_test():
         for e in d["events"]:
             e["at"] = _now() - EVENT_TTL_SEC - 60
         save(d)
-        ck(score(load()) == START, "expired events must not hold the score down")
+        ck(score(load(), msgs=100) == START, "expired events must not hold the score down")
 
         # NEGATIVE CONTROL: an unnamed class still deducts the default, so a new
         # failure mode is never silently free.
@@ -758,7 +789,7 @@ def _self_test():
            % (DEFAULT_DEDUCT, raw_points(load())[0]))
 
         cmd_clear(argparse.Namespace())
-        ck(score(load()) == START, "owner override must restore the score")
+        ck(score(load(), msgs=100) == START, "owner override must restore the score")
 
         # PER-SESSION ATTRIBUTION and the REWARD TIER, both added 2026-09-06.
         # A week-wide average lets one bad session hide inside a good week, and a
