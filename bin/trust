@@ -305,6 +305,10 @@ def cmd_sync(a):
 
 
 # --------------------------------------------------------------- new modes
+FAULTS_JSON = os.path.expanduser("~/.claude/reference/faults.json")
+BULK_RATIO = 10          # rows per distinct timestamp above which it is one ingest
+
+
 def parse_categories(text):
     """Rows of `faults categories`: (class, lifetime, week, rectification)."""
     rows = []
@@ -315,9 +319,54 @@ def parse_categories(text):
     return rows
 
 
-def uncovered(rows):
-    """Active classes with no detector, in either this file or the ledger."""
-    return [r for r in rows if r[2] > 0 and not (DETECTORS.get(r[0]) or r[3])]
+def batch_shape(path=None):
+    """{class: (rows, distinct timestamps)} straight from the fault store.
+
+    A ROW IS NOT AN INCIDENT, and the first version of surveil assumed it was.
+    Measured 2026-09-06: `retracted-judgement-in-sot` showed 317 hits "this week"
+    and was reported as the top uncovered failure mode. Its 317 rows carry FIVE
+    distinct timestamps, 139 of them in one batch, because `faults gdocs` mined a
+    single corrections document line by line. The genuine per-turn classes look
+    nothing like that: `ignored-what-he-already-said` is 490 rows across 463
+    timestamps. Counting rows made one document read as a crisis, which is the
+    crying-wolf failure this whole system exists to avoid.
+    """
+    try:
+        with open(path or FAULTS_JSON, encoding="utf-8") as fh:
+            store = json.load(fh)
+    except Exception:
+        return {}
+    faults = store.get("faults") if isinstance(store, dict) else None
+    rows = list(faults.values()) if isinstance(faults, dict) else (faults or [])
+    out = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        cls = r.get("category") or "?"
+        n, seen = out.get(cls, (0, set()))
+        seen.add(str(r.get("ts") or "")[:19])
+        out[cls] = (n + 1, seen)
+    return {k: (v[0], len(v[1])) for k, v in out.items()}
+
+
+def classify(rows, shape):
+    """(uncovered, bulk): active classes with no detector, split by shape."""
+    uncov, bulk = [], []
+    for r in rows:
+        cls, _all_n, week_n, rect = r
+        if week_n <= 0 or DETECTORS.get(cls) or rect:
+            continue
+        n, distinct = shape.get(cls, (week_n, week_n))
+        if distinct and n / max(distinct, 1) >= BULK_RATIO:
+            bulk.append(r + (distinct,))
+        else:
+            uncov.append(r + (distinct,))
+    return uncov, bulk
+
+
+def uncovered(rows, shape=None):
+    """Active, undetected classes that are NOT one bulk ingest. See batch_shape."""
+    return classify(rows, shape or {})[0]
 
 
 def cmd_surveil(a):
@@ -330,13 +379,18 @@ def cmd_surveil(a):
     if not rows:
         print("surveil: the fault ledger returned no categories (is `faults` on PATH?)")
         return 1
-    gaps = uncovered(rows)
-    print("surveil: %d active class(es), %d with NO detector"
-          % (sum(1 for r in rows if r[2] > 0), len(gaps)))
-    for cls, all_n, week_n, _ in sorted(gaps, key=lambda r: -r[2]):
-        print("  UNCOVERED  %-38s %4d this week, %6d lifetime" % (cls, week_n, all_n))
+    shape = batch_shape()
+    gaps, bulk = classify(rows, shape)
+    print("surveil: %d active class(es), %d with NO detector, %d bulk ingest(s) set aside"
+          % (sum(1 for r in rows if r[2] > 0), len(gaps), len(bulk)))
+    for cls, all_n, week_n, _rect, distinct in sorted(gaps, key=lambda r: -r[2]):
+        print("  UNCOVERED  %-38s %4d this week across %d distinct moment(s), %d lifetime"
+              % (cls, week_n, distinct, all_n))
+    for cls, all_n, week_n, _rect, distinct in sorted(bulk, key=lambda r: -r[2]):
+        print("  bulk       %-38s %4d rows but only %d moment(s): one ingest, not %d incidents"
+              % (cls, week_n, distinct, week_n))
     if gaps:
-        print("  Each line is a failure mode with nothing in the path to stop it.")
+        print("  Each UNCOVERED line is a failure mode with nothing in the path to stop it.")
         print("  Gate one, then claim it: trust award new-failure-mode-gated 5 \"<class>: <hook>\"")
     return 0
 
@@ -406,6 +460,21 @@ def _self_test():
     names = [r[0] for r in uncovered(rows)]
     ck(names == ["retracted-judgement-in-sot"],
        "surveil must name exactly the active, undetected class, got %s" % names)
+
+    # A ROW IS NOT AN INCIDENT. With the real batch shape (317 rows, 5 distinct
+    # timestamps) that same class is one document ingest and must NOT be reported
+    # as the week's top failure mode. The negative control is the class alongside
+    # it: 490 rows across 463 moments is genuinely per-turn and must survive.
+    shape = {"retracted-judgement-in-sot": (317, 5),
+             "per-turn-class": (490, 463)}
+    rows2 = parse_categories("category all 7d rect\n"
+                             "retracted-judgement-in-sot 317 317 \n"
+                             "per-turn-class 490 490 \n")
+    gaps, bulk = classify(rows2, shape)
+    ck([r[0] for r in bulk] == ["retracted-judgement-in-sot"],
+       "the bulk ingest must be set aside, got %s" % [r[0] for r in bulk])
+    ck([r[0] for r in gaps] == ["per-turn-class"],
+       "a genuinely per-turn class must stay UNCOVERED, got %s" % [r[0] for r in gaps])
 
     print("trust self-test: " + ("PASS" if not fails else "FAIL"))
     for f in fails:
