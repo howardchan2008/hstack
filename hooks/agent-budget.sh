@@ -90,7 +90,7 @@ SESSION="$SESSION_ID"
 [ -z "$SESSION" ] && SESSION="unknown"
 
 # Don't charge automated / headless dispatches to the interactive ship-discipline
-# budget. The cap measures the owner's hands-on Agent use; headless launchd jobs
+# budget. The cap measures HOWARD's hands-on Agent use; headless launchd jobs
 # (r17-digest, startup-digest, etc.) and SDK runs run their own work and must not
 # jam his interactive budget: that was the 2026-06 lockout mechanism. Exempt the
 # known headless entrypoints: allow + record in audit, but do NOT count to ledger.
@@ -135,6 +135,23 @@ fi
 
 audit() { echo "$(/bin/date -u +%Y-%m-%dT%H:%M:%S)	$1	daily=${DISPLAY_DAILY}/${DISPLAY_DAILY_CAP}+box=${BOX_DAILY}/${BOX_DAILY_CAP}	weekly=${3:-$WEEKLY}/${WEEKLY_CAP}	$SESSION" >> "$AUDIT" 2>/dev/null; }
 
+# PROBATION OUTRANKS BOTH BYPASSES (2026-09-06). Every other rule in this file can
+# be waived by touching a file, which is correct for a spend cap and wrong for a
+# penalty: a punishment I can lift with one `touch` is not a punishment. Only the
+# owner clears it, with `trust clear`. Placed ABOVE the bypasses on purpose.
+# AGENT_BUDGET_TRUST=0 detaches the score integration, for the negative-control
+# suite only: those cases must judge THIS hook's own logic, and reading a live
+# ledger made an ordinary dispatch look like a false positive.
+TRUST_BIN="${TRUST_BIN:-$HOME/.claude/bin/trust}"
+if [ "${AGENT_BUDGET_TRUST:-1}" = "1" ] && [ -x "$TRUST_BIN" ] \
+   && "$TRUST_BIN" status --json 2>/dev/null | grep -q '"probation": true'; then
+  audit probation-deny 2>/dev/null
+  printf 'AGENT DISPATCH CLOSED: probation is live in the trust ledger, because a\n' >&2
+  printf 'correction had to be repeated. Do the work inline in this session.\n' >&2
+  printf 'State and the way out: trust status. Owner override: trust clear\n' >&2
+  exit 2
+fi
+
 # Permanent bypass
 if [ -f /tmp/agent-budget-disabled ]; then
   audit disabled
@@ -149,9 +166,29 @@ if [ -f /tmp/agent-budget-bypass ]; then
   exit 0
 fi
 
-# Block if already at/over cap (do NOT append a denied attempt)
+# BLOCK_REASON is set by the cap checks below. The probation branch that used to
+# sit here was a DUPLICATE of the exit-2 check above and read the live ledger even
+# when the score integration was detached, which turned an ordinary dispatch into
+# a false positive in the negative-control suite. One rule, one place.
 BLOCK_REASON=""
-if [ "$SESSION" != "unknown" ] && [ "$SESSION_DAILY" -ge "$DAILY_CAP" ]; then
+
+# THE REWARD SIDE (2026-09-06). At or above the earned bar with a clean 24h, the
+# per-session dispatch cap doubles. Punishment alone teaches avoidance; this is
+# the lever that pays for a good week, and it reads the same ledger as the
+# penalties so it cannot drift from them.
+if [ "${AGENT_BUDGET_TRUST:-1}" = "1" ] && [ -x "$TRUST_BIN" ] \
+   && "$TRUST_BIN" status --json 2>/dev/null | grep -q '"earned_capability": true'; then
+  DAILY_CAP=$(( DAILY_CAP * 2 ))
+  # DISPLAY_DAILY_CAP was computed above, so refresh it or the audit line and the
+  # refusal text quote the old cap while enforcement uses the new one. A number
+  # that disagrees with the rule it reports is how a guard gets mistrusted.
+  [ "$SESSION" != "unknown" ] && DISPLAY_DAILY_CAP="$DAILY_CAP"
+fi
+
+# Block if already at/over cap (do NOT append a denied attempt)
+if [ -n "$BLOCK_REASON" ]; then
+  :
+elif [ "$SESSION" != "unknown" ] && [ "$SESSION_DAILY" -ge "$DAILY_CAP" ]; then
   BLOCK_REASON="Per-session Agent cap hit: $SESSION_DAILY/$DAILY_CAP in this session in the last 24h"
 elif [ "$BOX_DAILY" -ge "$BOX_DAILY_CAP" ]; then
   BLOCK_REASON="Box-wide Agent cap hit: $BOX_DAILY/$BOX_DAILY_CAP across all sessions in the last 24h"

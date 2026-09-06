@@ -196,7 +196,9 @@ def cases():
              # id would spend the cap after eight runs of this suite.
              payload=pre("Agent", {"description": "one small lookup"},
                          session_id=f"nc-agent-{os.getpid()}"),
-             why="a single dispatch inside budget. The block arm needs a spent budget, "
+             env={"AGENT_BUDGET_TRUST": "0"},
+             why="a single dispatch inside budget, with the score integration detached "
+                 "so this judges the hook's own logic. The block arm needs a spent budget, "
                  "which is state this suite will not fake: see docs/TESTING.md"),
     ]
 

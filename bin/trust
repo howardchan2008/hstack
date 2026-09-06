@@ -62,6 +62,7 @@ STANDARD = 85
 TIERS = ((85, "CLEAR"), (70, "WATCH"), (50, "PROBATION"), (0, "LOCKDOWN"))
 EVENT_TTL_SEC = 7 * 24 * 3600      # the score is a ROLLING WEEK, not a lifetime
 K_RATE = 25                        # points-per-message scale, swept on real days
+EARNED_AT = 95                     # score at which the reward tier grants capability
 MIN_WORKLOAD = 20                  # denominator floor, so a quiet day is not noise
 
 # Deduction weights, keyed to the fault ledger's own class names so the two stores
@@ -209,6 +210,30 @@ def raw_points(d, now=None):
     return ded, aw
 
 
+def session_score(d, sid, now=None, msgs=None):
+    """Score for ONE session's own events. A week-wide average hides a bad hour."""
+    sub = {"events": [e for e in d["events"] if e.get("session") == sid],
+           "cleared_at": d.get("cleared_at", 0)}
+    return score(sub, now, msgs)
+
+
+def earned_capability(s, d=None, now=None):
+    """Reward that GRANTS something: a wider agent budget once the score is high.
+
+    Every other lever here removes a capability, which only ever teaches what to
+    avoid. This is the one that pays for a good week, and it is deliberately
+    strict: the score must be at or above EARNED_AT with no deduction in the last
+    24 hours, so one clean afternoon after a bad morning does not buy it.
+    """
+    if s < EARNED_AT:
+        return False
+    if d is None:
+        return True
+    cut = (now or _now()) - 24 * 3600
+    return not any(e for e in live_events(d, now)
+                   if e["kind"] == "deduct" and e.get("at", 0) >= cut)
+
+
 def score(d, now=None, msgs=None):
     ded, aw = raw_points(d, now)
     effective = max(0, ded - aw)
@@ -248,10 +273,16 @@ def open_deductions(d, now=None):
     return out
 
 
-def _append(kind, cls, points, reason=""):
+def _session():
+    """The session that earned the event, so a bad session cannot hide in a good week."""
+    return os.environ.get("CLAUDE_SESSION_ID") or os.environ.get("TRUST_SESSION") or ""
+
+
+def _append(kind, cls, points, reason="", session=None):
     d = load()
     d["events"].append({"kind": kind, "class": cls, "points": int(points),
-                        "at": _now(), "reason": reason[:300]})
+                        "at": _now(), "reason": reason[:300],
+                        "session": session if session is not None else _session()})
     d["events"] = d["events"][-1000:]
     save(d)
     return d
@@ -262,16 +293,28 @@ def cmd_status(a):
     s = score(d)
     t = tier(s)
     if getattr(a, "json", False):
-        print(json.dumps({"score": s, "tier": t, "standard": STANDARD,
-                          "probation": t in ("PROBATION", "LOCKDOWN"),
-                          "evidence_first": t != "CLEAR",
-                          "lockdown": t == "LOCKDOWN",
-                          "open": open_deductions(d)}))
+        sid = getattr(a, "session", "") or ""
+        out = {"score": s, "tier": t, "standard": STANDARD,
+               "probation": t in ("PROBATION", "LOCKDOWN"),
+               "evidence_first": t != "CLEAR",
+               "lockdown": t == "LOCKDOWN",
+               "earned_capability": earned_capability(s, d),
+               "open": open_deductions(d)}
+        if sid:
+            out["session"] = sid
+            out["session_score"] = session_score(d, sid)
+        print(json.dumps(out))
         return 0
     print("SCORE %d/100  tier %s  (standard %d)  %s"
           % (s, t, STANDARD, "OK" if s >= STANDARD else "BELOW STANDARD"))
     for c in COSTS[t]:
         print("  in force: " + c)
+    if earned_capability(s, d):
+        print("  EARNED: score at or above %d with no deduction in 24h, "
+              "so the agent budget runs wide" % EARNED_AT)
+    sid = getattr(a, "session", "") or ""
+    if sid:
+        print("  this session on its own: %d" % session_score(d, sid))
     op = open_deductions(d)
     if op:
         print("  open deductions (rolling 7d):")
@@ -717,6 +760,26 @@ def _self_test():
         cmd_clear(argparse.Namespace())
         ck(score(load()) == START, "owner override must restore the score")
 
+        # PER-SESSION ATTRIBUTION and the REWARD TIER, both added 2026-09-06.
+        # A week-wide average lets one bad session hide inside a good week, and a
+        # system that only ever removes capability teaches avoidance and nothing
+        # else. Negative controls on both: another session's events must not move
+        # this session's number, and a fresh deduction must revoke the reward.
+        _append("deduct", "did-not-do-what-was-asked", 8, "sess A", session="A")
+        _append("deduct", "did-not-do-what-was-asked", 8, "sess B", session="B")
+        d0 = load()
+        ck(session_score(d0, "A", msgs=20) == session_score(d0, "B", msgs=20) == 90,
+           "each session must carry only its own events, got A=%d B=%d"
+           % (session_score(d0, "A", msgs=20), session_score(d0, "B", msgs=20)))
+        ck(score(d0, msgs=20) == 80,
+           "the box-wide score must carry both, got %d" % score(d0, msgs=20))
+        cmd_clear(argparse.Namespace())
+        ck(earned_capability(96, load()), "96 with a clean 24h must earn the reward")
+        ck(not earned_capability(94, load()), "94 must not earn it")
+        _append("deduct", "style-and-register", 3, "fresh", session="A")
+        ck(not earned_capability(96, load()),
+           "a deduction inside 24h must revoke the reward whatever the score")
+
     # SURVEILLANCE, on a fixture rather than the live ledger: a class with hits
     # this week and no detector is UNCOVERED; one carrying a rectification is
     # not, and neither is a class that has gone quiet.
@@ -754,7 +817,9 @@ def main():
     ap = argparse.ArgumentParser(description="score, tiers and surveillance for this agent")
     ap.add_argument("--self-test", action="store_true")
     sub = ap.add_subparsers(dest="cmd")
-    s = sub.add_parser("status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("status"); s.add_argument("--json", action="store_true")
+    s.add_argument("--session", default="", help="also score this session on its own")
+    s.set_defaults(fn=cmd_status)
     s = sub.add_parser("deduct"); s.add_argument("cls"); s.add_argument("points", nargs="?", type=int)
     s.add_argument("reason", nargs="?", default=""); s.set_defaults(fn=cmd_deduct)
     s = sub.add_parser("award"); s.add_argument("kind"); s.add_argument("points", nargs="?", type=int)
