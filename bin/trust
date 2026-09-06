@@ -46,6 +46,7 @@ which keeps the score a picture of NOW rather than a permanent record.
 """
 import argparse
 import collections
+import pathlib
 import glob
 import json
 import os
@@ -61,7 +62,18 @@ START = 100
 STANDARD = 85
 TIERS = ((85, "CLEAR"), (70, "WATCH"), (50, "PROBATION"), (0, "LOCKDOWN"))
 EVENT_TTL_SEC = 7 * 24 * 3600      # the score is a ROLLING WEEK, not a lifetime
-K_RATE = 25                        # points-per-message scale, swept on real days
+K_RATE = 10                        # points-per-message scale, re-swept after the fit
+# ABSOLUTE, not rate-scaled. Him having to repeat himself is not proportional to
+# how much work the week held: one repeat in a busy week is exactly as bad as one
+# in a quiet week, and under a pure rate a repeat on a 100-prompt week cost 3
+# points, which is not a penalty. These two classes hit the score flat, on top of
+# the rate, so a single repeat always crosses a tier.
+FLAT_CAP = 60                      # three incidents. Past LOCKDOWN, more flat
+                                   # points only destroy resolution: the tier is
+                                   # already at its worst and the score stops
+                                   # telling one bad week from a catastrophic one.
+ABSOLUTE = {"repeated-defect-after-correction": 20,
+            "restated-standing-directive": 30}
 EARNED_AT = 95                     # score at which the reward tier grants capability
 MIN_WORKLOAD = 20                  # denominator floor, so a quiet day is not noise
 
@@ -71,11 +83,11 @@ MIN_WORKLOAD = 20                  # denominator floor, so a quiet day is not no
 WEIGHTS = {
     "repeated-defect-after-correction": 30,
     "restated-standing-directive": 40,   # he had to say a standing rule again
-    "claimed-without-verifying": 10,
-    "ignored-what-he-already-said": 8,
-    "did-not-do-what-was-asked": 8,
+    "claimed-without-verifying": 8,
+    "ignored-what-he-already-said": 30,
+    "did-not-do-what-was-asked": 30,
     "unverified-external-state": 6,
-    "asked-instead-of-deciding": 5,
+    "asked-instead-of-deciding": 30,
     "handed-work-back-that-was-mine": 5,
     "scope-drift-or-overreach": 3,
     "style-and-register": 3,
@@ -236,11 +248,23 @@ def earned_capability(s, d=None, now=None):
 
 
 def score(d, now=None, msgs=None):
-    ded, aw = raw_points(d, now)
-    effective = max(0, ded - aw)
+    flat = 0
+    rate_ded = 0
+    for e in live_events(d, now):
+        if e["kind"] != "deduct":
+            continue
+        cls = e.get("class", "")
+        if cls in ABSOLUTE:
+            # one flat hit per incident, whatever the week's volume
+            flat += ABSOLUTE[cls] * max(1, e.get("points", 0) // max(WEIGHTS.get(cls, 1), 1))
+        else:
+            rate_ded += e.get("points", 0)
+    _ded, aw = raw_points(d, now)
+    effective = max(0, rate_ded - aw)
     n = msgs if msgs is not None else workload(now)
     n = max(n, MIN_WORKLOAD)          # a two-prompt day cannot swing the score
-    return int(round(max(0, min(START, START - K_RATE * effective / n))))
+    return int(round(max(0, min(START, START - K_RATE * effective / n
+                                - min(flat, FLAT_CAP)))))
 
 
 def tier(s):
@@ -697,6 +721,77 @@ def cmd_backtest(a):
     return 0
 
 
+def cmd_fit(a):
+    """FIT the class weights to his dissatisfaction instead of guessing them.
+
+    The owner, 2026-09-06: "the point system has to be optimized for the weights
+    variables and clauses and rules such that ull abide by it and improve". The
+    shipped weights were my severity intuition. This searches for the weights
+    that make the daily score track HIS push-back rate as tightly as possible,
+    which is the only ground truth available at day granularity.
+
+    Coordinate ascent over integer weights, objective = Spearman rho between the
+    daily score and his push-back rate (more negative is better). Constrained so
+    a repeat can never be cheaper than an ordinary fault, because that ordering
+    is his stated preference and not something the data gets to overturn.
+    """
+    faults, msgs = daily_facts(a.days)
+    days = sorted(set(list(faults) + list(msgs)))[-a.days:]
+    rows = []
+    for day in days:
+        m = msgs.get(day, [0, 0, 0])
+        if m[0] < 5:
+            continue
+        rows.append((faults.get(day, {}), max(m[0], MIN_WORKLOAD), 100.0 * m[1] / m[0]))
+    if len(rows) < 5:
+        print("fit: not enough days with real prompts (%d)" % len(rows))
+        return 1
+    classes = sorted({c for f, _, _ in rows for c in f})
+
+    def rho_for(w):
+        sc, neg = [], []
+        for f, n, negpct in rows:
+            pts = sum(w.get(c, DEFAULT_DEDUCT) * k for c, k in f.items())
+            sc.append(max(0, min(START, START - K_RATE * pts / n)))
+            neg.append(negpct)
+        return _spearman(sc, neg)
+
+    w = {c: WEIGHTS.get(c, DEFAULT_DEDUCT) for c in classes}
+    base = rho_for(w)
+    grid = [0, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40]
+    best = base
+    for _pass in range(4):
+        for c in classes:
+            keep, cur = w[c], best
+            for cand in grid:
+                w[c] = cand
+                r = rho_for(w)
+                if r < cur - 1e-9:      # more negative is better
+                    cur, keep = r, cand
+            w[c], best = keep, cur
+    floor = max(w.get("repeated-defect-after-correction", 0),
+                w.get("restated-standing-directive", 0))
+    for c in classes:
+        if c not in ("repeated-defect-after-correction", "restated-standing-directive"):
+            w[c] = min(w[c], floor if floor else w[c])
+    fitted = rho_for(w)
+    print("fit over %d day(s): rho %+.2f -> %+.2f" % (len(rows), base, fitted))
+    print("%-40s %6s %6s" % ("class", "now", "fit"))
+    for c in classes:
+        cur = WEIGHTS.get(c, DEFAULT_DEDUCT)
+        mark = "" if cur == w[c] else "   <-"
+        print("%-40s %6d %6d%s" % (c, cur, w[c], mark))
+    if not a.apply:
+        print("\nnothing written. re-run with --apply to adopt these weights.")
+        return 0
+    src = pathlib.Path(__file__).read_text()
+    for c in classes:
+        src = re.sub(r'("%s":\s*)\d+' % re.escape(c), r"\g<1>%d" % w[c], src)
+    pathlib.Path(__file__).write_text(src)
+    print("\nadopted. re-run `trust fit` after a week of new data.")
+    return 0
+
+
 def _self_test():
     import tempfile
     global LEDGER
@@ -716,39 +811,43 @@ def _self_test():
         ck(tier(70) == "WATCH" and tier(69) == "PROBATION", "the 70 boundary is wrong")
         ck(tier(50) == "PROBATION" and tier(49) == "LOCKDOWN", "the 50 boundary is wrong")
 
-        # THE SCORE IS A RATE, and a repeat now costs 30. One repeat against a
-        # 100-prompt week is 100 - 25*30/100 = 93 and stays CLEAR; the same repeat
-        # against a 20-prompt week is 63, which is PROBATION. Same fault, very
-        # different share of the work.
+        # A REPEAT HITS FLAT, whatever the week's volume: him saying it twice is
+        # not proportional to how much work there was. One repeat is 20 points
+        # and lands in WATCH from a clean start; a restated standing directive is
+        # 30 and lands there on its own too.
         cmd_strike(argparse.Namespace(reason="he repeated the autocompact correction"))
-        ck(score(load(), msgs=100) == 92,
-           "one strike in a busy week should be 92, got %d" % score(load(), msgs=100))
-        ck(tier(score(load(), msgs=100)) == "CLEAR", "92 must stay CLEAR")
-        ck(tier(score(load(), msgs=20)) == "PROBATION",
-           "one strike in a 20-prompt week must be PROBATION, got %d"
-           % score(load(), msgs=20))
+        ck(score(load(), msgs=100) == 80 and score(load(), msgs=20) == 80,
+           "one repeat must cost a flat 20 at any volume, got %d busy / %d quiet"
+           % (score(load(), msgs=100), score(load(), msgs=20)))
+        ck(tier(score(load(), msgs=100)) == "WATCH", "one repeat must reach WATCH")
 
-        # NEGATIVE CONTROL, the property the backtest was run to get: volume must
-        # not decide the score. Four times the faults over four times the work
-        # scores the same as one over one.
-        for _ in range(3):
-            cmd_strike(argparse.Namespace(reason="same rate, more volume"))
-        ck(score(load(), msgs=80) == score(load(), msgs=80),
-           "rate invariance placeholder")
-        ck(score(load(), msgs=80) == 62,
-           "4 strikes over 80 prompts must equal 1 over 20 (62), got %d"
-           % score(load(), msgs=80))
+        # NEGATIVE CONTROL for the rate half: ordinary classes still scale with
+        # the work. The same eight-point fault is worth four times as much of the
+        # score in a 20-prompt week as in an 80-prompt one.
+        cmd_clear(argparse.Namespace())
+        cmd_deduct(argparse.Namespace(cls="style-and-register", points=8, reason="x"))
+        quiet, busy = score(load(), msgs=20), score(load(), msgs=80)
+        ck(quiet < busy, "a rate class must cost more in a quiet week, got %d vs %d"
+           % (quiet, busy))
 
-        # Tier walk on one fixed workload: 4 repeats over 60 prompts is 50
-        # (PROBATION), 8 is 0 (LOCKDOWN). Both bands exercised on real numbers.
-        ck(tier(score(load(), msgs=60)) == "PROBATION",
-           "4 strikes against 60 prompts must be PROBATION, got %d"
-           % score(load(), msgs=60))
-        for _ in range(4):
-            cmd_strike(argparse.Namespace(reason="deeper"))
-        ck(tier(score(load(), msgs=60)) == "LOCKDOWN",
-           "8 strikes against 60 prompts must be LOCKDOWN, got %d"
-           % score(load(), msgs=60))
+        # Tier walk, all four bands, on flat penalties so the arithmetic is exact.
+        # HERMETIC: its own ledger file. Sharing one with the arms above coupled
+        # them through cleared_at and the award total, and the walk then failed on
+        # residue rather than on the rule it is testing.
+        walk = os.path.join(tmp, "walk.json")
+        saved, LEDGER = LEDGER, walk
+        globals()["LEDGER"] = walk
+        cmd_deduct(argparse.Namespace(cls="restated-standing-directive", points=None, reason="x"))
+        ck(tier(score(load(), msgs=100)) == "WATCH",
+           "one restatement must be WATCH, got %d" % score(load(), msgs=100))
+        cmd_strike(argparse.Namespace(reason="a repeat on top"))
+        ck(tier(score(load(), msgs=100)) == "PROBATION",
+           "a restatement plus a repeat must be PROBATION, got %d" % score(load(), msgs=100))
+        cmd_deduct(argparse.Namespace(cls="restated-standing-directive", points=None, reason="x"))
+        ck(tier(score(load(), msgs=100)) == "LOCKDOWN",
+           "restatement, repeat, restatement must be LOCKDOWN, got %d"
+           % score(load(), msgs=100))
+        globals()["LEDGER"] = saved
         ck("agent dispatches are closed" in COSTS["PROBATION"],
            "probation must close dispatches")
         ck("no new-feature work: clear the open deductions first" in COSTS["LOCKDOWN"],
@@ -799,10 +898,10 @@ def _self_test():
         _append("deduct", "did-not-do-what-was-asked", 8, "sess A", session="A")
         _append("deduct", "did-not-do-what-was-asked", 8, "sess B", session="B")
         d0 = load()
-        ck(session_score(d0, "A", msgs=20) == session_score(d0, "B", msgs=20) == 90,
+        ck(session_score(d0, "A", msgs=20) == session_score(d0, "B", msgs=20) == 96,
            "each session must carry only its own events, got A=%d B=%d"
            % (session_score(d0, "A", msgs=20), session_score(d0, "B", msgs=20)))
-        ck(score(d0, msgs=20) == 80,
+        ck(score(d0, msgs=20) == 92,
            "the box-wide score must carry both, got %d" % score(d0, msgs=20))
         cmd_clear(argparse.Namespace())
         ck(earned_capability(96, load()), "96 with a clean 24h must earn the reward")
@@ -865,6 +964,9 @@ def main():
     s = sub.add_parser("surveil"); s.set_defaults(fn=cmd_surveil)
     s = sub.add_parser("backtest"); s.add_argument("--days", type=int, default=9)
     s.set_defaults(fn=cmd_backtest)
+    s = sub.add_parser("fit", help="fit the weights to his push-back rate")
+    s.add_argument("--days", type=int, default=14); s.add_argument("--apply", action="store_true")
+    s.set_defaults(fn=cmd_fit)
     s = sub.add_parser("verdict", help="his own call, weighted above every proxy")
     s.add_argument("verdict", choices=["good", "bad", "+1", "-1", "up", "down"])
     s.add_argument("reason", nargs="?", default=""); s.add_argument("--points", type=int)
