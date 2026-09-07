@@ -20,7 +20,7 @@
 # Fails open. Any error here must never block a prompt.
 #
 # LAYER CHECK, added 2026-08-24. The generic contract below is ALREADY carried by
-# two always-loaded files: ~/CLAUDE.md ("RESPONSE FORMAT IS MANDATORY") and
+# two always-loaded files: ~/.claude/box-policy.md ("RESPONSE FORMAT IS MANDATORY") and
 # ~/.claude/CLAUDE.md ("Session close-out format is fixed"). Printing it here made
 # a third copy, paid per prompt instead of once per session. Measured before
 # cutting it: close-out compliance (first line opens with DONE) ran 97.9% over
@@ -48,7 +48,10 @@ if [ -n "$PAYLOAD" ]; then
   printf '%s' "$PAYLOAD" | /usr/bin/python3 "$HOME/.claude/hooks/closeout-shape.py" --advise 2>/dev/null || true
 fi
 
-if ! grep -q 'YOUR MOVE' "$HOME/CLAUDE.md" 2>/dev/null \
+# PATH CORRECTED 2026-09-08: this checked $HOME/CLAUDE.md, project memory that only
+# loads when cwd is $HOME, so disk presence was standing in for context presence in
+# the 511 of 594 sessions started elsewhere. Both files read here are user memory now.
+if ! grep -q 'YOUR MOVE' "$HOME/.claude/box-policy.md" 2>/dev/null \
    && ! grep -q 'YOUR MOVE' "$HOME/.claude/CLAUDE.md" 2>/dev/null; then
   printf 'CLOSE-OUT CONTRACT, applies to the reply you are about to write:\n'
   printf '  First line is DONE. Not a preamble, not a status sentence, not "Here is where things stand".\n'

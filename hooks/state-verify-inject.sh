@@ -68,16 +68,21 @@ SV_STATE_DIR="${CLAUDE_SV_STATE_DIR:-$HOME/.claude/.state-verify}"
 # LAYER CHECK, added 2026-08-24. The compaction dedupe below works: measured across
 # the live transcripts, 2,549 full blocks against 1,340 pointers, and the single
 # 493-block session predates the 2026-08-06 dedupe commit. Post-commit the full
-# block fires 7 to 37 times a day. But ~/CLAUDE.md carries this same rule as a
-# 4,642-byte section that loads unconditionally in EVERY session, so even the
-# FIRST emission is a second copy of something already in context. One fact, one
-# always-loaded layer: emit the pointer whenever that section is verifiably
-# present, and fall through to the full block when it is not (file missing, moved,
-# or heading renamed). The check READS the file rather than assuming it loaded, so
-# a session started somewhere ~/CLAUDE.md does not reach still gets the rules.
-if grep -q 'STATE-VERIFY BEFORE YOU SPEAK' "$HOME/CLAUDE.md" 2>/dev/null; then
+# block fires 7 to 37 times a day. But the box policy carries this same rule as a
+# 4,642-byte section, so even the FIRST emission is a second copy of something
+# already in context. One fact, one always-loaded layer: emit the pointer whenever
+# that section is verifiably present, and fall through to the full block when it is
+# not (file missing, moved, or heading renamed).
+#
+# PATH CORRECTED 2026-09-08. This read $HOME/CLAUDE.md, which is PROJECT memory: it
+# exists on disk in every session but only LOADS when cwd is $HOME. Presence on disk
+# was being used as proof of presence in context, so 511 of 594 sessions were handed
+# a pointer to a section they had never been shown. The policy body now lives in
+# ~/.claude/box-policy.md, imported by ~/.claude/CLAUDE.md (user memory), which does
+# load everywhere, so reading the file is finally evidence that the rules are loaded.
+if grep -q 'STATE-VERIFY BEFORE YOU SPEAK' "$HOME/.claude/box-policy.md" 2>/dev/null; then
   if [ -n "$PROMPT_VAL" ] && printf '%s' "$PROMPT_VAL" | grep -qiE "$TRIGGER"; then
-    echo "STATE-VERIFY: active. Full rules already in context this session (~/CLAUDE.md sec.1). Before any externally-visible claim: check live, cross-verify every SOT layer, numbers come from data not prose."
+    echo "STATE-VERIFY: active. Full rules already in context this session (box-policy.md sec.1). Before any externally-visible claim: check live, cross-verify every SOT layer, numbers come from data not prose."
   fi
   exit 0
 fi
