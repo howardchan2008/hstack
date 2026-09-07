@@ -365,31 +365,27 @@ if [ -n "${NND_PARK:-}" ]; then
         NOT-TYPING: <owner-decision|destructive|expensive|not-mine>: <item>"
 fi
 
-# ---- close-out shape (CLAUDE.md 'Session close-out format is fixed', added 2026-08-06, the owner directive) --
-# The close-out format was written 2026-08-04 and then obeyed in 0 of 49
-# sessions measured 2026-08-06. the owner: "i dont think u ever obey my
-# instructions". Text in CLAUDE.md is not enforcement. This is.
+# ---- close-out shape: REMOVED FROM THIS HOOK 2026-09-06 ----------------------
+# This block used to run closeout-shape.py itself and fold its output into
+# SIGNALS. closeout-shape.py is ALSO registered as its own Stop hook (index 7 in
+# settings.json), so the same checker judged the same message twice through two
+# different gates, and the two gates could not see each other.
 #
-# Carried as a SIGNAL rather than an immediate block, for the same reason given
-# at the NND_PARK block above: MAX_BLOCKS and stop_hook_active then bound it
-# exactly like every other signal, so a wrong shape can never wedge a session.
+# THE COST, MEASURED TODAY. This hook refused with "reply with the DELTA ONLY";
+# the next reply opened "Delta only."; closeout-shape.py R1 then blocked that
+# same reply for not opening with DONE. Two refusals, two reprompts, zero
+# content change between them, and the owner: "isnt that excessive, and i dont
+# think it made any real difference". The wording fix landed in 295a156; this
+# removes the duplicate judge that made a second reprompt possible at all.
 #
-# Fails OPEN. A missing checker, missing python3, or any error leaves SHAPE_OUT
-# empty and loses this gate rather than jamming every stop on the box. The
-# checker itself only fires on turns that used a tool, so conversation and
-# mid-task narration are exempt; the target is the work summary the owner reads.
-SHAPE_CHECKER="$HOME/.claude/hooks/closeout-shape.py"
-if [ -f "$SHAPE_CHECKER" ] && [ -n "$LAST_TEXT" ]; then
-  SHAPE_OUT="$(python3 "$SHAPE_CHECKER" "$TRANSCRIPT" "$LAST_TEXT" 2>/dev/null || true)"
-  if [ -n "$SHAPE_OUT" ]; then
-    SIGNALS="${SIGNALS}
-  - the close-out does not match the fixed shape (CLAUDE.md 'Session close-out format is fixed'):
-${SHAPE_OUT}
-    Reshape the message you already have: DONE first, then YOUR MOVE. There is
-    no third section. Requests for the owner go under YOUR MOVE and nowhere else.
-    This is a rewrite, not new work, so it is not a reason to stop."
-  fi
-fi
+# CLAUDE.md, hooks audit 2026-09-02: "One principle lives in one hook." Shape is
+# closeout-shape.py's principle. This hook keeps the objective floor only:
+# uncommitted files, unpushed commits, named-not-done work. Nothing is lost by
+# deleting this block, because the deleted call and the surviving hook run the
+# same script on the same message; only the number of turns the owner pays changes.
+#
+# If the standalone registration is ever removed from settings.json, restore
+# this block in the same commit or the shape gate disappears entirely.
 
 # WHICH REPOS TO CHECK (rewritten 2026-07-27, the owner: "fix the stop hook").
 #
@@ -1258,6 +1254,18 @@ agent's, from 10h earlier.
 AND CHECK THE CONSTRAINT IS REAL. Before optimising toward a number, grep for the
 thing that enforces it. Same day: 3.9KB of memory entries were queued for deletion
 to get under a 17510 byte cap that no hook, script, or config anywhere defines.
+
+DO NOT RE-SEND THE CLOSE-OUT. the owner has already read the message this refusal
+is about. When you continue, reply with the DELTA ONLY: the item you just fixed
+and what changed. Re-listing work he read a minute ago makes him read it twice.
+Added 2026-09-04 on his instruction: "double texting shd be prevented as seen in
+above after stop hook as it repeats pretty much same content".
+SHAPE STILL APPLIES TO THE DELTA. It is still a close-out: first line DONE, then
+YOUR MOVE, just short. Never open with "Delta only" or any other preamble, and
+never print an enforcement token in the visible reply unless it IS the verdict,
+because closeout-shape.py reads the first line and blocks a second time.
+Measured 2026-09-06: this exact pair cost two extra reprompts for zero content
+change, and he asked why.
 
 If stopping really is right, say so on its own line:
   STOPPING: <reason>

@@ -56,6 +56,8 @@ REQUIRED = [
 # interesting as a deletion. Anything not on this list gets surfaced for review.
 # Adding a hook on purpose means adding it here on purpose.
 KNOWN = {
+    # Added 2026-09-05, the fault-ledger interventions. Registered here on
+    # purpose: an unregistered hook is meant to read as suspicious.
     "person-claim-balance.py",
     "owner-facts.py",
     "written-call-guard.py",
@@ -71,8 +73,8 @@ KNOWN = {
     # Added 2026-09-02 (hooks audit): all four were registered, on disk and
     # deliberate, and printed REVIEW at every session start for weeks.
     "closeout-shape.py",
-    "concede-gate.py",
-    "encourage.py",
+    # Added 2026-09-06 with the hook itself, so it never spends a week printing
+    # REVIEW the way the previous eighteen did.
     # Added 2026-08-17, same reason as the eleven below: it landed committed
     # (9210a9d) from a concurrent session and printed REVIEW at every start.
     # Added 2026-08-14. All eleven below were registered, on disk, deliberate,
@@ -318,8 +320,23 @@ fi
 # alone accounts for most of that. Re-derive with `guard-verdict --count`.
 # Above the threshold, something is charging per call instead of per decision,
 # and that gets its own line rather than a shared fragment.
+#
+# CACHED, because it was 8,641ms of this hook's 10,000ms. Measured 2026-09-05 by
+# timing every line (`PS4='+ $EPOCHREALTIME' bash -x`): guard-verdict alone was 86%
+# of SessionStart, against 842ms for the WHOLE hook in the 2026-08-20 baseline. It
+# rescans the live transcript tree, which only grows, so its cost rises every day
+# while its answer moves in hours.
+#
+# A block-rate over the transcript tree is a machine-global fact, which is what
+# factcache exists for, and it is not repo-scoped, so the tool accepts the key.
+# 6h TTL: ten session starts in a morning pay it once, and a guard that starts
+# burning calls is still caught the same day.
 if [ -x "$HOME/.claude/bin/guard-verdict" ]; then
-  gvout="$("$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
+  if command -v factcache >/dev/null 2>&1; then
+    gvout="$(factcache --ttl 21600 run guard-verdict-count -- "$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
+  else
+    gvout="$("$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
+  fi
   gvpct="$(printf '%s' "$gvout" | sed -n 's/.*blocks, \([0-9]*\)% wasted.*/\1/p')"
   if [ -n "$gvpct" ] && [ "$gvpct" -lt 25 ] 2>/dev/null; then
     ok_frags="$ok_frags · guards ${gvpct}% idle"
@@ -360,12 +377,7 @@ fi
 # NEGATIVE values are signals, not failures: -15 is the SIGTERM from a deliberate
 # `launchctl kickstart -k`, and four jobs showed it purely because they had just been
 # restarted. Only a POSITIVE status means the job itself returned an error.
-# WIRING_VERIFY_JOB_PREFIX narrows this to your own agents. The pattern here used to be
-# a personal name that the publish scrub rewrote into prose, leaving an awk regex that
-# matched no label at all: a check that can never fire reads exactly like a clean box.
-_failed="$(launchctl list 2>/dev/null | awk -v re="${WIRING_VERIFY_JOB_PREFIX:-}" \
-  '$2 ~ /^[1-9][0-9]*$/ && $3 !~ /^com\.apple\./ && (re == "" || index($3, re) == 1) {print $3"("$2")"}' \
-  | tr '\n' ' ')"
+_failed="$(launchctl list 2>/dev/null | awk '$3 ~ /the owner/ && $2 ~ /^[1-9][0-9]*$/ {print $3"("$2")"}' | tr '\n' ' ')"
 [ -n "$_failed" ] && printf 'wiring-verify: scheduled job(s) last exited non-zero: %s\n' "$_failed"
 
 # --- the score, and a self-maintaining sync ---------------------------------------
@@ -381,23 +393,27 @@ if [ -x "$HOME/.claude/bin/trust" ]; then
   fi
 fi
 
-# --- auto-compact: the window and the trigger are TWO knobs ------------------------
-# CLAUDE_CODE_AUTO_COMPACT_WINDOW is the WINDOW (it is also the denominator in the
-# /context readout) and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is the TRIGGER, applied as
-# threshold = min(floor(window*pct/100), window-13000). Setting only the window moves
-# the trigger to window-13000, which reads as "auto-compact never fires"; putting a
-# number in settings.json `autoCompactWindow` shrinks the context window itself, which
-# reads as "you changed my context limit". Both happened here within three days, so
-# the half-configured state is what this warns about, not any particular number.
+# --- is the auto-compact PAIR still intact? ---------------------------------------
+# the owner, 2026-09-06: "auto-compact is different from context limit, two different
+# settings ... set auto-compact to 750K whilst context limit 1M", said after I had
+# collapsed the pair twice in three days. The two knobs are independent and both must
+# be present: CLAUDE_CODE_AUTO_COMPACT_WINDOW is the WINDOW (his context limit and the
+# readout denominator) and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is the TRIGGER, applied as
+# threshold = min(floor(window*pct/100), window-13000). Evidence they work together:
+# 2026-09-01 to 09-03 compactions fired at 717,056 to 718,782, which is 750,000 minus
+# the 33k precompute buffer, while August without the pct fired at 998k to 1,003k.
+# A number in settings.json `autoCompactWindow` is the failure mode, not the fix: it
+# moves the WINDOW, which is how his readout became "345k / 750k".
 _acw="$(launchctl getenv CLAUDE_CODE_AUTO_COMPACT_WINDOW 2>/dev/null)"
 _acp="$(launchctl getenv CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 2>/dev/null)"
-if [ -n "$_acw" ] && [ -z "$_acp" ]; then
-  printf 'wiring-verify: auto-compact window pinned to %s with no CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, so the trigger is window-13000 and early compaction is effectively off\n' "$_acw"
+if [ "$_acw" != "1000000" ] || [ "$_acp" != "75" ]; then
+  printf 'wiring-verify: AUTO-COMPACT PAIR BROKEN: window=%s (want 1000000) pct=%s (want 75). Fix: launchctl setenv both, and check ~/.zshenv plus com.the owner.cc-env.plist\n' \
+    "${_acw:-UNSET}" "${_acp:-UNSET}"
 fi
 _acs="$(python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.claude/settings.json"))).get("autoCompactWindow"))' 2>/dev/null)"
 case "$_acs" in
   ''|auto|None) : ;;
-  *) printf 'wiring-verify: settings.json autoCompactWindow=%s is a NUMBER, which caps the context window itself; the compaction trigger belongs in CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\n' "$_acs" ;;
+  *) printf 'wiring-verify: settings.json autoCompactWindow=%s is a NUMBER, which caps the context window itself. It must be "auto"; the trigger lives in CLAUDE_AUTOCOMPACT_PCT_OVERRIDE\n' "$_acs" ;;
 esac
 
 # --- does Codex still share this box's context in every repo? ---------------------
@@ -424,4 +440,16 @@ if [ -f "/tmp/wiring-verify.$$" ]; then
   rm -f "/tmp/wiring-verify.$$"
 fi
 
+# The fault ledger's monthly re-read (FAULT-LEDGER.md section 5). Folded in here
+# rather than given its own SessionStart entry: the principle is "one hook owns
+# one principle", and this one already runs and already prints one line. Silent
+# on every day except the day the check is owed.
+[ -x "$HOME/.claude/bin/ledger-recheck" ] && "$HOME/.claude/bin/ledger-recheck" --due
+
 exit 0
+
+# --- bio-check: biographical facts must match USER.md (added 2026-09-06) ---
+if [ -x "$HOME/.claude/bin/bio-check" ]; then
+  BIO="$("$HOME/.claude/bin/bio-check" 2>/dev/null | tail -1)"
+  case "$BIO" in *contradiction*) echo "wiring-verify: BIO-CHECK: $BIO";; esac
+fi

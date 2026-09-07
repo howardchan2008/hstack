@@ -1539,11 +1539,50 @@ if "force push" in hits:
               "Resolve any commit you do not recognise BEFORE arming:\n"
               "  bash ~/.claude/hooks/guild-session.sh --who <sha>\n")
 
+# PROVENANCE, the second ledger. The roster above answers "who else is live";
+# it does NOT answer "where else does this history still exist". Those are
+# different questions and on 2026-09-08 the second one was answered from memory
+# and answered WRONG: I told him "no authoritative source survives" about a
+# branch I had pushed to origin myself an hour earlier, and had already proved
+# was ours by root commit 0325a21 and merge-base 71e7f9d. The evidence was mine,
+# in the same session, and was not consulted.
+#
+# So the answer arrives unasked-for, at the one call where it matters. Same
+# fail-loud contract as the roster: a probe that FAILS prints UNKNOWN and is
+# never rendered as "nothing survives". refprov exit codes are 0 SURVIVES,
+# 1 NO-COPY-FOUND, 2 UNKNOWN, 3 usage.
+PROV_NOTE = ""
+if "force push" in hits:
+    import subprocess
+    _rp = os.path.join(HOME, ".claude", "bin", "refprov")
+    _pushed = re.search(r"git\s+push\b([^;&|\n]*)", SUBJECT)
+    _args = (_pushed.group(1) if _pushed else "").split()
+    _cands = [a for a in _args if not a.startswith("-")]
+    _ref = _cands[-1] if len(_cands) >= 2 else "HEAD"
+    _ref = _ref.split(":")[-1].lstrip("+")
+    if not os.path.exists(_rp):
+        PROV_NOTE = ("⚠ PROVENANCE UNAVAILABLE: refprov not found at " + _rp
+                     + ".\nDo NOT read that as 'nothing survives'. Check by hand.\n")
+    else:
+        try:
+            _pp = subprocess.run(["python3", _rp, _ref, "--repo", _repo,
+                                  "--timeout", "15"],
+                                 capture_output=True, text=True, timeout=45)
+            _pout = (_pp.stdout or "").strip()
+            PROV_NOTE = (_pout + "\n") if _pout else (
+                "⚠ PROVENANCE UNAVAILABLE: refprov printed nothing (exit "
+                + str(_pp.returncode) + "). Not a clean bill. Check by hand.\n")
+        except Exception as _e:
+            PROV_NOTE = ("⚠ PROVENANCE UNAVAILABLE: refprov failed: "
+                         + str(_e)[:200]
+                         + "\nDo NOT read that as 'nothing survives'.\n")
+
 msg = (
     "⛔ RISK-CLASS op blocked by risk-checkpoint (CLAUDE.md rule #3): "
     + ", ".join(hits) + ".\n"
     + BP_NOTE
     + LEDGER_NOTE
+    + PROV_NOTE
     + "State first: TARGET · WHY · BLAST RADIUS · ROLLBACK.\n"
     + "Then proceed in TWO SEPARATE CALLS (scoped, preferred since it leaves\n"
       "other rules armed):\n"

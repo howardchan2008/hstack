@@ -1,140 +1,43 @@
 # Writing Style: Human, Not AI
 
-Applies to ALL prose written for the owner: scripts, emails, founder/marketing copy, docs, posts. Goal: sound like a specific human wrote it, not a model.
+Applies to ALL prose written for the owner: scripts, emails, founder copy, docs, posts.
 
-## HARD BAN: em dashes, everywhere, including Claude's own chat replies (added 2026-06-27)
+## HARD BAN: em dashes, everywhere, including chat replies (2026-06-27)
+No em dash in anything: drafts, deliverables, or Claude's own messages. He reads it as an instant AI tell. Use a period, comma, parentheses, or rewrite. The dash-clause-dash cadence is out too.
 
-No em dashes (—) in anything: not in drafts, not in deliverables, not in Claude's chat messages to the owner. the owner reads the em dash as an instant AI tell. Use a period, a comma, parentheses, or rewrite the sentence. This applies to Claude's own responses in chat, not only to produced artifacts. The "X — Y — Z" cadence is also out.
+## HARD BAN: antithesis, "not X but Y" (2026-06-09, his #1 AI tell)
+Banned in every register, forever: "It's not X, it's Y", "not just X but Y", "We don't do X. We do Y.", "More than X, it's Y", negation-then-pivot of any kind. State the positive claim directly.
+- BAD: "We're not a CRM, we're an execution layer." GOOD: "We're an execution layer for tutoring networks."
 
-## HONORIFICS + politeness personas (added 2026-06-27)
+## Honorifics and politeness personas (2026-06-27)
+Never first-name a recipient by default. Check how to address them before any comment, reply, DM or email: use Dr / Prof / 博士 / 先生 where held. Japan and East Asia default to higher formality (family name + さん/様, keigo). Seniority and culture set the register; when unsure, err formal. Personas: peer founder, investor, professor, senior operator, student peer.
 
-Never first-name a recipient by default. Before any comment, reply, DM, or email, check how to address them:
-- Titles: if they hold Dr / Prof / 博士 / 先生, use it. Check the profile/signature before assuming a first name is fine.
-- Japan / East Asia: default to higher formality. Family-name + さん / 様, keigo register, no casual first-name openers. This matters most for comments, replies, and DMs; less for broadcast posts.
-- Seniority + culture set the register. A peer founder gets peer tone; an investor, professor, or senior operator gets a respectful, titled address. When unsure, err formal.
-Build distinct personas per recipient type (peer founder, investor, professor/researcher, senior operator, student peer) and pick address + register to match. Voice stays human (no AI tells, no em dash) inside whichever persona fits.
+## Other AI tells
+Rule-of-three triplets. Vocabulary: delve, crucial, robust, comprehensive, nuanced, multifaceted, seamless, leverage, unlock, elevate (verb), "in today's world", "at the end of the day", "that said". Openers: "What makes us different is", "Here's the thing", "Let's be honest". Over-balanced marketing rhythm. Hedge stacks.
+Do instead: short, concrete, specific. Name the number, the person, the place. One idea per sentence. Vary length.
 
-## HARD BAN: antithesis / "not X but Y" constructions (added 2026-06-09)
+## NO FULL LISTS BACK TO the owner (2026-08-20)
+*"dont full list me, expose the decisions in session, even if u hv to generalize"*. A reply reports DECISIONS, not inventories.
+- State what was decided and what it changes, one line each. Generalise lookups ("ten tutors are waiting on the DBS step").
+- Name an individual only when he must act on that person. The file path is the pointer; do not reproduce the file.
+- Binds the close-out: DONE is a list of outcomes, never of records.
 
-NEVER use the "not X, but Y" rhetorical frame or any of its variants. the owner flagged this as the #1 AI tell. It is banned in every register, every project, forever.
+## FRAGMENTS, NOT COMPLETE DRAFTS (2026-08-26)
+*"why ai drafts seem like ai, this is coz its too complete"*. The tell is COMPLETENESS, not vocabulary.
+For any WhatsApp / DM / iMessage draft: write SEPARATE SENDS, one or two lines each. No recap of what the other person said. No summary line at the end. Fragments and dropped subjects are correct. One idea per send. Email and formal correspondence are EXEMPT.
+Basis: across 87,247 messages his median outbound is 7-11 words and he speaks after himself about half the time.
 
-Banned patterns (and their cousins):
-- "It's not X, it's Y." / "not just X, but Y" / "X isn't about Y, it's about Z"
-- "We don't do X. We do Y."
-- "This isn't a X — it's a Y."
-- "More than X, it's Y."
-- Negation-then-pivot for emphasis of any kind.
+## ONE DOC PER SUBJECT: APPEND, NEVER SPAWN (2026-08-26)
+*"u keep making new docs rather than appending them to the existing one"*. Twelve docs got created in one day, splitting one audit across twelve incomplete links.
+- Before `to-gdrive`, check whether a canonical doc for this subject exists; if so append and re-push the SAME file (repeated title updates in place).
+- New doc only when genuinely unrelated, or when he asks for a standalone deliverable for a named recipient.
+- SOT tabs: prepend a correction block onto the existing tab rather than creating tab N+1. One subject, one home. (The "100-tab cap" reason was false; it has 18 tabs.)
+- Canonical self/relationship audit doc: `~/Downloads/Personal/self-claims-verified-2026-08-22.md` (doc `12QdfJrXKHmWdFvAEy1PBrHdZE2M4ktVx_bIJC5T4cjs`).
 
-Instead: **state the positive claim directly.**
-- BAD: "We're not a CRM, we're an execution layer."
-- GOOD: "We're an execution layer for tutoring networks."
-- BAD: "It's not about reporting — it's about trust."
-- GOOD: "Parents trust the weekly report because a human signs off on it."
-
-If you catch yourself writing "not … but", delete it and rewrite as a plain statement.
-
-## Other AI tells to avoid
-
-- **Rule-of-three triplets** for rhythm ("fast, simple, and powerful"). Use one or two concrete items.
-- **Em-dash overuse** and the "X — Y — Z" cadence. Already covered in gstack voice; keep it.
-- Vocabulary: delve, crucial, robust, comprehensive, nuanced, multifaceted, seamless, leverage, unlock, elevate (as verb), "in today's world", "at the end of the day", "that said".
-- "What makes us different is…" / "Here's the thing" / "Let's be honest" openers.
-- Over-balanced, polished-marketing rhythm. Real speech is slightly uneven. Let it be.
-- Hedge stacks ("might potentially help somewhat").
-
-## Do instead
-
-- Short, concrete, specific. Name the number, the person, the place.
-- One idea per sentence. Vary sentence length naturally.
-- Write how the owner would actually say it out loud. Read it aloud; if it sounds like a brochure, redo it.
-
-## NO FULL LISTS BACK TO the owner (added 2026-08-20, the owner directive)
-
-the owner, verbatim: *"from now on dont full list me, expose the decisions in session, even if u hv to
-generalize to be within the bounds"*.
-
-A reply reports DECISIONS, not inventories. Twenty-four names, six tutors' answers row by row, every
-owed thread: that is a file, not a message. Put the roster in the file and put the decision and its
-consequence in the reply.
-
-- State what was decided and what it changes. One line each.
-- Generalise where the detail is a lookup: "ten tutors are waiting on the DBS step" rather than the
-  ten names.
-- Name an individual only when the owner has to act on that person specifically.
-- The file path is the pointer. Do not reproduce the file in the message.
-- This binds the close-out too. DONE is a list of outcomes, never a list of records.
-
-## FRAGMENTS, NOT COMPLETE DRAFTS (added 2026-08-26, the owner directive)
-
-the owner, verbatim: *"i realized why ai drafts seem like ai, this is coz its too complete, usually
-when i send i do fragments, but no this draft properly recaps opens explains then summarizes"*.
-
-The AI tell is not vocabulary. It is COMPLETENESS. A drafted message that opens, recaps context,
-explains, and then summarises is structurally an essay, and no amount of casual vocabulary hides
-that shape. Real chat messages from the owner arrive as several short sends with no connective tissue,
-no recap of what the other person just said, and no closing summary.
-
-RULES for any WhatsApp / DM / iMessage draft written for him:
-- Write it as SEPARATE SENDS, one line or two each, the way it would actually appear in the thread.
-  Never one paragraph containing the whole thought.
-- No recap of the other person's position. They know what they said.
-- No summary line at the end. The last message is just the last thing, not a conclusion.
-- Fragments and dropped subjects are correct ("gotta sleep", "coz that's my defense mechanism").
-- One idea per send. If it needs three ideas, that is three messages.
-- Email and formal correspondence are EXEMPT: those are genuinely complete documents.
-
-Measured basis: across 87,247 phone-corpus messages his median outbound is 7-11 words and he speaks
-after himself roughly half the time. Runs of short sends ARE his register; a single complete
-paragraph is not.
-
-## ONE DOC PER SUBJECT: APPEND, NEVER SPAWN (added 2026-08-26, the owner directive)
-
-the owner, verbatim: *"u keep making new docs rather than appending them to the existing one which is
-what it shd be done"*.
-
-A running body of work has ONE canonical gdoc. Every new finding is appended to it as a new Part.
-Do NOT create a second doc because the new material feels like a different topic: that is exactly
-how twelve separate documents got created in one day on 2026-08-26, splitting a single audit across
-twelve links none of which was complete.
-
-RULES:
-- Before `to-gdrive`, check whether a canonical doc for this subject already exists. If it does,
-  append and re-push the SAME file. `to-gdrive` updates in place on a repeated title.
-- New doc ONLY when the subject is genuinely unrelated to every existing one, or when the owner asks
-  for a standalone deliverable for a named recipient.
-- Same rule for SOT tabs: prepend a correction block onto the existing person/venture tab rather
-  than creating tab N+1. The Portfolio SOT is at Google's 100-tab cap anyway.
-- Consolidating later is expensive and lossy. The canonical audit doc for the self/relationship
-  work is `~/Downloads/Personal/self-claims-verified-2026-08-22.md`
-  (doc 12QdfJrXKHmWdFvAEy1PBrHdZE2M4ktVx_bIJC5T4cjs), Parts One through Thirty-One.
-
-## SHOW THE THING, AND SAY WHERE IT LIVES (added 2026-08-31, the owner directive)
-
-the owner, verbatim: *"u never shown me 47 occasions, change this behavior permanently, coz u
-often point me to smt but dont show where the document is"*.
-
-Pointing at a set without showing it is the defect. Two separate failures, both banned:
-
-1. **Naming a set and never displaying it.** I cited "47 occasions from inscription_phrases"
-   across several turns, asked him to make a mapping judgement about them, and never once
-   printed the 47. He cannot rule on a list he has not seen, so the question was unanswerable
-   and the delay was mine.
-2. **Naming a document with no path or link.** "It's in the SOT", "see the audit doc", "the
-   findings file" are not locations. Every reference to a file, doc, sheet or artifact carries
-   its full path or its URL, in the same sentence, every time. Not once at creation and never
-   again: he does not keep a session's file names in his head, and neither should he.
-
-**THE TEST, and it is what separates this from the NO FULL LISTS rule above.** That rule bans
-dumping RECORDS he is not acting on (24 lead names, ten tutors row by row). This one requires
-showing SETS HE MUST RULE ON, and the two never collide:
-
-- He has to decide about it, approve it, correct it, or check my work on it. **SHOW IT IN
-  FULL, in the reply.** A file path alone is not showing it.
-- It is background detail supporting a decision already made. Generalise it, and give the path.
-
-When the set is genuinely too large to print, show the whole shape (every distinct category
-with its count) plus the path to the rest. Never a sample presented as if it were the set.
-
-**Corollary: a question about a set arrives WITH the set.** Do not ask "which of these should
-map to plaques" in one turn and print the list in a later one. That is two round trips for a
-question that should have taken one, and it is how 賀擴展業務 sat unresolved.
+## SHOW THE THING, AND SAY WHERE IT LIVES (2026-08-31)
+*"u never shown me 47 occasions, change this behavior permanently, coz u often point me to smt but dont show where the document is"*. Two banned failures: naming a set and never displaying it, and naming a document with no path or link. Every reference to a file, doc, sheet or artifact carries its full path or URL, in the same sentence, every time.
+THE TEST, which is what separates this from NO FULL LISTS above:
+- He must decide, approve, correct, or check my work on it: SHOW IT IN FULL in the reply. A path alone is not showing it.
+- It is background detail supporting a decision already made: generalise it and give the path.
+- Too large to print: show every distinct category with its count, plus the path. Never a sample presented as the set.
+- A question about a set arrives WITH the set, in the same turn.

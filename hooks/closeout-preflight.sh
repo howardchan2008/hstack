@@ -90,4 +90,30 @@ if [ -f "$LOG" ]; then
   fi
 fi
 
+# PROBATION BANNER (2026-09-06). A penalty nobody is reminded of is a penalty that
+# does not exist, so the open strike is in front of me on every prompt until it
+# clears. `trust` prints one line when clear and three when not; only the
+# probation case is injected, so this is silent on a healthy day.
+#
+# 2026-09-07, and this is the whole point of the change: the long form printed
+# here every prompt (2,176 chars, 13 named failure classes, the word LOCKDOWN)
+# was a character sketch of the agent reading it, which is the mechanism the
+# thread he sent blames for degraded agents. `status --brief` keeps every
+# constraint verbatim (asserted in trust --self-test) and one next action, and
+# drops the inventory. The penalty did not get cheaper; the priming did.
+if [ -x "$HOME/.claude/bin/trust" ]; then
+  _trust_status="$("$HOME/.claude/bin/trust" status --brief 2>/dev/null)"
+  _trust_tier="$("$HOME/.claude/bin/trust" status 2>/dev/null | head -1)"
+  case "$_trust_tier" in
+    PROBATION*|*BELOW\ STANDARD*)
+      printf '%s\n' "$_trust_status"
+      # THE EVAL HISTORY, in front of me before I write anything. Borrowed from
+      # the loop he sent: the harness appends every failure to eval_history.log
+      # and the agent reads it before its next edit. Two lines, the most recent
+      # deductions, because a score with no reason attached teaches nothing.
+      "$HOME/.claude/bin/trust" log -n 1 2>/dev/null | sed 's/^/  last: /'
+      ;;
+  esac
+fi
+
 exit 0

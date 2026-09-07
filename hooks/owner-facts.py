@@ -160,6 +160,20 @@ def main():
     prior = load(sid)
     if prior:
         out = render(prior)
+        # Identical re-injection collapses to a pointer. Measured 2026-09-06 over
+        # 14 days: this block was repeated 148 times inside single sessions, 73 KB.
+        # The facts do not stop being in force, so the pointer says so and names
+        # the file rather than reprinting them.
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+            from inject_once import once
+            out = once(sid, "owner-facts", out,
+                       pointer=("OWNER-STATED FACTS unchanged since shown earlier this "
+                                "session (%d still in force). Do not contradict them; "
+                                "reread: %s" % (len(prior), path(sid).replace(
+                                    os.path.expanduser("~"), "~"))))
+        except Exception:
+            pass
         if out:
             print(out)
     fresh = extract(prompt)

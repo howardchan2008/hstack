@@ -83,6 +83,11 @@ guild_read_payload() {
   while IFS= read -r -t 2 line 2>/dev/null; do
     payload="$payload$line"
   done
+  # A stream with NO trailing newline leaves the last chunk in $line while
+  # `read` reports failure, so the loop above discards it. Measured 2026-09-08:
+  # a one-line JSON payload sent without "\n" made the whole identity vanish
+  # and the caller resolved as unknown. Keep the remainder.
+  [ -n "$line" ] && payload="$payload$line"
   [ -n "$payload" ] || return 1
   printf '%s\n' "$payload"
 }

@@ -31,6 +31,25 @@ import sys
 STATE = os.path.expanduser("~/.claude/state")
 MAX_BLOCKS = 1
 
+# the owner, 2026-09-04: "double texting shd be prevented ... after stop hook as it
+# repeats pretty much same content". A Stop hook cannot un-send the close-out he
+# has already read, so the only moment this is preventable is HERE, in the text
+# the model reads before it writes the next message. R7 in closeout-shape.py
+# already stops a THIRD block; nothing told the second one to be short.
+DELTA_ONLY = (
+    "DO NOT RE-SEND THE CLOSE-OUT. the owner has already read the message this "
+    "refusal is about. Reply with the DELTA ONLY: the item you just fixed and "
+    "what changed. Re-listing work he read a minute ago makes him read it "
+    "twice, which is the cost this refusal was supposed to save.\n"
+    "SHAPE STILL APPLIES TO THE DELTA. It is still a close-out: first line DONE, "
+    "then YOUR MOVE, just short. Never open with a preamble such as 'Delta only' "
+    "and never print an enforcement token in the visible reply. Measured across "
+    "30 days of transcripts: this gate followed by stop-justify.sh is the most "
+    "common two-block chain on the box (10 of 44), because asking for a shorter "
+    "reply without naming the required shape produces a reply the next gate "
+    "rejects."
+)
+
 # Phrasings that hand a DECISION back. Each of these appeared verbatim in the
 # measured sample above.
 ASKS = re.compile(
@@ -156,7 +175,8 @@ def main():
         "hands, his knowledge, or his money. Deciding between two options YOU "
         "generated is not any of those.\n"
         "Go do it now, then report it in DONE. If it truly cannot be done, say "
-        "which item and WHY in one line. An empty YOUR MOVE is the target."}))
+        "which item and WHY in one line. An empty YOUR MOVE is the target.\n\n"
+        + DELTA_ONLY}))
     sys.exit(0)
 
 

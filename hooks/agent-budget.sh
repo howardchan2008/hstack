@@ -90,7 +90,7 @@ SESSION="$SESSION_ID"
 [ -z "$SESSION" ] && SESSION="unknown"
 
 # Don't charge automated / headless dispatches to the interactive ship-discipline
-# budget. The cap measures HOWARD's hands-on Agent use; headless launchd jobs
+# budget. The cap measures the owner's hands-on Agent use; headless launchd jobs
 # (r17-digest, startup-digest, etc.) and SDK runs run their own work and must not
 # jam his interactive budget: that was the 2026-06 lockout mechanism. Exempt the
 # known headless entrypoints: allow + record in audit, but do NOT count to ledger.

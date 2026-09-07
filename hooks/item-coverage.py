@@ -36,6 +36,7 @@ import json
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.expanduser("~/.claude/hooks"))
 
@@ -113,8 +114,9 @@ _HOOKJUNK = re.compile(
     r"<task-notification|\[Request interrupted|Caveat:|\[SYSTEM NOTIFICATION|"
     # THIS HOOK'S OWN REFUSAL, added 2026-09-06. A Stop block is written back into
     # the transcript as a USER turn, so on the retry the newest "prompt" was this
-    # hook's own banner, and it judged the close-out against four items split out
-    # of its own words. A guard that can cite itself as the request never clears.
+    # hook's own banner, and it then judged the close-out against four items split
+    # out of its own words ("Each of these was asked for", "say which item and why
+    # under YOUR MOVE"). A guard that can cite itself as the request never clears.
     r"Stop hook feedback|Stop hook blocking error|"
     r"This session is being continued)", re.I)
 
@@ -123,16 +125,21 @@ def _clean_user_text(t):
     # One owner for harness furniture: the same lib the UserPromptSubmit injectors
     # use, so a marker added there is honoured here without a second list to drift.
     try:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+        sys.path.insert(0, os.path.expanduser("~/.claude/hooks/lib"))
         from hookpaste import strip_hook_paste as _strip
         t = _strip(t)
     except Exception:
         pass
     t = re.sub(r"<system-reminder>.*?</system-reminder>", "", t, flags=re.S)
     t = re.sub(r"UserPromptSubmit hook additional context:.*", "", t, flags=re.S)
-    # HARNESS XML THAT SURVIVED THE STRIPS ABOVE. An UNCLOSED or nested
-    # <system-reminder> leaves its inner lines behind, the splitter reads them as
-    # requests, and the hook then demands work on a notification nobody sent.
+    # HARNESS XML THAT SURVIVED THE STRIP ABOVE, fixed 2026-09-05 after this hook
+    # blocked a close-out over two "items" that were a <tool-use-id> and a
+    # background-task <summary>. An UNCLOSED or nested <system-reminder> leaves
+    # its inner lines behind, the splitter reads them as requests, and the hook
+    # then demands work on a notification the owner never sent. Same defect
+    # class as the one corrected in `faults` the same day: harness output read
+    # as his words. Crying wolf is worse than missing an item, because it trains
+    # the reader to skip the guard.
     t = re.sub(r"<task-notification>.*?</task-notification>", "", t, flags=re.S)
     t = re.sub(r"<system-reminder>.*", "", t, flags=re.S)   # unclosed opener
     keep = []
@@ -320,6 +327,63 @@ def uncovered(items, reply):
     return missed
 
 
+def _repo_root(start):
+    """Nearest ancestor holding .git, else the directory itself."""
+    p = os.path.abspath(start)
+    for _ in range(8):
+        if os.path.isdir(os.path.join(p, ".git")):
+            return p
+        parent = os.path.dirname(p)
+        if parent == p:
+            break
+        p = parent
+    return os.path.abspath(start)
+
+
+def _persist(missed, cwd):
+    """Append uncovered items to this repo's docs/OPEN-ITEMS.md, deduped.
+
+    carryover-queue.py already READS that file on every prompt in the repo.
+    Nothing WROTE to it except by hand, which is why an item dropped at the end
+    of a session was gone for good.
+    """
+    try:
+        root = _repo_root(cwd)
+        path = os.path.join(root, "docs", "OPEN-ITEMS.md")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        existing = ""
+        if os.path.exists(path):
+            with open(path, errors="ignore") as fh:
+                existing = fh.read()
+        def key(s):
+            # Strip the bullet and the date stamp this writer adds, so an item
+            # already on file matches the raw item text on the next pass. The
+            # first version compared against the WRITTEN line and therefore
+            # never matched itself, re-appending the same item every session.
+            s = re.sub(r"^\s*[-*]\s*(?:\[\d{4}-\d{2}-\d{2}\]\s*)?", "", s)
+            return " ".join(s.lower().split())[:80]
+
+        seen = {key(w) for w in existing.splitlines() if w.strip()}
+        add = []
+        for m in missed[:6]:
+            line = " ".join(str(m).split())[:300]
+            if key(line) in seen:
+                continue
+            seen.add(key(line))
+            add.append(line)
+        if not add:
+            return
+        stamp = time.strftime("%Y-%m-%d")
+        with open(path, "a") as fh:
+            if not existing.strip():
+                fh.write("# Open items\n\nCarried across sessions; "
+                         "carryover-queue.py re-injects these on the next prompt.\n")
+            for line in add:
+                fh.write(f"\n- [{stamp}] {line}\n")
+    except Exception:
+        return
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -371,6 +435,13 @@ def main():
     except Exception:
         n = 0
     if n >= MAX_BLOCKS:
+        # The nagging is spent and the items are STILL uncovered, so the session
+        # is about to end carrying them. FAULT LEDGER 2026-09-05, change 1 of 6:
+        # ignored-what-he-already-said is the largest class (n=441, 34% of
+        # everything) and the reason is that an item only survived inside one
+        # session. Write it where carryover-queue.py reads it at the next prompt
+        # in this repo, so the request outlives the conversation that dropped it.
+        _persist(missed, payload.get("cwd") or os.getcwd())
         sys.exit(0)
     try:
         os.makedirs(STATE, exist_ok=True)

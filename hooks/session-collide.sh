@@ -723,10 +723,63 @@ STAMP_DIR="${TMPDIR:-/tmp}/claude-collide"
 mkdir -p "$STAMP_DIR" 2>/dev/null || true
 
 command -v git >/dev/null 2>&1 || exit 0
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-PRIMARY="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+# ---- resolve the repo from the ARGUMENT, never from cwd --------------------
+# WHY THIS EXISTS (2026-09-08, measured). 83 of 594 recorded sessions ran with
+# cwd=$HOME. $HOME carries no .git, so every one of those sessions exited on
+# this line at SessionStart and stayed exited for its whole life: no owner
+# attribution, no collision detection, no drift stamp. The edits they made
+# were real and they landed inside repos -- $HOME/.claude is itself a repo --
+# and the only reason none of it was attributed is that the hook asked whether
+# the CURRENT DIRECTORY was a work tree instead of asking where the file being
+# written lives. That is the same cwd-trust defect the --owner path was fixed
+# for on 2026-07-28, and invariant 2 at the top of this file already forbids
+# it: "Resolve the repo from the ARGUMENT, never from cwd."
+#
+# The payload names the file. Write/Edit/MultiEdit/NotebookEdit carry
+# "file_path", NotebookEdit also "notebook_path". Fall back to the repo that
+# file lives in whenever cwd is not a work tree.
+#
+# STDIN IS READ ONCE, HERE. guild_read_payload drains the same pipe, so a
+# second reader further down would get an empty payload and the session would
+# go unidentified. Source the identity helper early (it defines functions and
+# runs nothing), take the payload, and hand the id on through COLLIDE_SESSION,
+# which guild_resolve_session_id prefers over stdin.
+. "${BASH_SOURCE[0]%/*}/session-identity.sh"
+COLLIDE_PAYLOAD=""
+[ -t 0 ] || COLLIDE_PAYLOAD="$(guild_read_payload || true)"
+if [ -n "$COLLIDE_PAYLOAD" ] && [ -z "${COLLIDE_SESSION:-}" ]; then
+  _psid="$(printf '%s' "$COLLIDE_PAYLOAD" \
+    | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | head -1)"
+  [ -n "$_psid" ] && export COLLIDE_SESSION="$_psid"
+fi
+
+PRIMARY=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  PRIMARY="$(git rev-parse --show-toplevel 2>/dev/null)"
+fi
+if [ -z "$PRIMARY" ] && [ -n "$COLLIDE_PAYLOAD" ]; then
+  # Longest match wins over a positional one: "replace_all" and "old_string"
+  # can precede "file_path" in the same object, so never assume field order.
+  _pfp="$(printf '%s' "$COLLIDE_PAYLOAD" \
+    | sed -E -n 's/.*"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"([^"]*)".*/\2/p' \
+    | head -1)"
+  if [ -n "$_pfp" ]; then
+    # The file itself need not exist yet (Write creates it); its directory
+    # must, or there is nothing to resolve against.
+    _pdir="$(dirname "$_pfp" 2>/dev/null)"
+    if [ -d "$_pdir" ]; then
+      PRIMARY="$(git -C "$_pdir" rev-parse --show-toplevel 2>/dev/null)"
+    fi
+  fi
+fi
 [ -n "$PRIMARY" ] || exit 0
+# Everything downstream addresses the repo explicitly with `git -C "$PRIMARY"`,
+# so a PRIMARY that is not an ancestor of cwd is safe. Anything that still
+# leaned on cwd would silently read the wrong tree; that is what the test
+# "attributes an edit made from a non-repo cwd" pins.
+cd "$PRIMARY" 2>/dev/null || exit 0
 
 KEY="$(printf '%s' "$PRIMARY" | shasum | awk '{print $1}')"
 STAMP="$STAMP_DIR/$KEY"

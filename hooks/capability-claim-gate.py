@@ -49,7 +49,32 @@ DEATH = (r"(?:is|are|was|were|'s|has been|have been)\s+"
          r"not\s+available|not\s+working|no\s+longer\s+(?:works?|available)|"
          r"unsupported|not\s+supported|not\s+granted|not\s+enabled)")
 
-CLAIM = re.compile(rf"\b([A-Za-z0-9][\w.+-]{{2,30}})\s+{CAPABILITY}?\s*{DEATH}", re.I)
+# BLAMING AN ACTOR IS THE SAME CLAIM WEARING A VERB. Added 2026-09-04 after the
+# gate sat armed through a whole session of this exact error and matched nothing.
+# Measured against the sentences actually shipped that day: "LinkedIn is refusing
+# this account's outbound invites", "LinkedIn is refusing automation". Both are
+# capability verdicts about an external system, both were WRONG (the real cause was
+# an ordinary weekly invitation limit, which the owner had to paste from his own
+# screen), and neither matched DEATH because none of those words is a state
+# adjective. "X is dead" was covered; "X is refusing me" was not, and the second
+# shape is the more seductive one because it reads as an observation rather than a
+# verdict. Same evidence bar: exercise it, or hedge, or quote what it actually said.
+BLAME = (r"(?:is|are|was|were|'s|has been|have been|keeps|kept)\s+"
+         r"(?:actively\s+|silently\s+|deliberately\s+|now\s+)?"
+         r"(?:refusing|rejecting|blocking|throttling|rate[- ]limiting|"
+         r"restricting|banning|denying|ignoring|dropping|filtering)")
+
+CLAIM = re.compile(rf"\b([A-Za-z0-9][\w.+-]{{2,30}})\s+{CAPABILITY}?\s*(?:{DEATH}|{BLAME})", re.I)
+# EVIDENCE DOES NOT SUPPORT is not a capability claim. Added 2026-09-04, the same day
+# the BLAME arm went in and caught its own author: "the within-month contrast does not
+# support the hook doing the work" is a statistical statement about a measurement that
+# WAS run and pasted, and blocking it teaches the opposite of what this gate is for. It
+# would push a session to drop an honest negative result rather than report it.
+# The capability sense keeps firing: "the API does not support streaming".
+_EVIDENTIAL = re.compile(
+    r"\b(data|evidence|contrast|result|results|finding|findings|numbers|sample|"
+    r"measurement|control|correlation|comparison|analysis|test|breakdown)\b", re.I)
+
 CLAIM2 = re.compile(rf"\b([A-Za-z0-9][\w.+-]{{2,30}})\s+(?:cannot|can't|cant|"
                     rf"does\s+not|doesn't)\s+(?:do|send|read|write|run|reach|"
                     rf"access|generate|create|list|support)\b", re.I)
@@ -106,6 +131,13 @@ def offenders(text, tools):
         for m in rx.finditer(text):
             subj = m.group(1)
             if subj.lower() in GENERIC or subj.lower().endswith(("ing",)):
+                continue
+            # An EVIDENTIAL subject is reporting a measurement, not a capability.
+            # "the within-month contrast does not support the hook" was blocked on
+            # 2026-09-04 although the test had just been run and its table pasted,
+            # which would teach a session to drop an honest negative result rather
+            # than report it. "the API does not support streaming" still fires.
+            if _EVIDENTIAL.fullmatch(subj):
                 continue
             # Did any tool call in this turn actually mention the subject? That
             # is the cheapest possible proxy for "you tried it", and it is the
@@ -201,6 +233,31 @@ def _self_test():
        "CLAIM2: the verb-second 'X cannot <verb>' form must fire")
     ck(not offenders("I have not tested it, but vertex_image.py cannot generate images.", []),
        "HEDGED: a claim carrying its own hedge is allowed")
+    # --- BLAME ARM 2026-09-04. The gate was armed all session and matched nothing
+    # while the owner was told twice that LinkedIn was refusing his account. These
+    # are the sentences that actually shipped, kept verbatim so the arm cannot rot.
+    ck(offenders("LinkedIn is refusing this account's outbound invites.", []),
+       "BLAME: 'X is refusing <us>' is a capability verdict and must fire")
+    # EVIDENTIAL ARM 2026-09-04. The BLAME arm added the same day blocked its own
+    # author's honest negative result, which is the opposite of what this gate is for.
+    ck(not offenders("The within-month contrast does not support the hook doing the "
+                     "work.", []),
+       "a measurement reporting a null result is not a capability claim")
+    ck(not offenders("The data does not support that conclusion.", []),
+       "evidential 'does not support' must not fire")
+    ck(offenders("The API does not support streaming.", []),
+       "the capability sense of 'does not support' still fires")
+    ck(offenders("The invite endpoint is rejecting our calls.", []),
+       "BLAME: rejecting must fire")
+    ck(offenders("Hunter is throttling the lane.", []), "BLAME: throttling must fire")
+    # The sentence that SHOULD have been written instead: it quotes what the service
+    # said rather than diagnosing it, so it must stay allowed or the gate teaches
+    # people to hide the evidence.
+    ck(not offenders("LinkedIn said: you have reached the weekly limit for "
+                     "connection invitations.", []),
+       "quoting the service's own words is evidence, not a verdict")
+    ck(not offenders("He is ignoring my last message.", []),
+       "a person is not a capability")
     print("SELF-TEST PASS" if not bad else f"SELF-TEST FAILED ({bad})")
     return 1 if bad else 0
 

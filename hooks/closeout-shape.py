@@ -56,6 +56,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 CEILING = 12
@@ -152,7 +153,7 @@ def turn_did_work(transcript_path):
 DONE_HEADING = re.compile(r"^\s*(\*\*|#+\s*)?DONE\b", re.M)
 
 
-def prior_closeout_in_turn(transcript_path):
+def prior_closeout_in_turn(transcript_path, current_text=None):
     """True if an assistant message in THIS user turn already carried a DONE heading.
 
     R7, added 2026-08-17 after the owner read the same close-out twice in one turn.
@@ -163,6 +164,13 @@ def prior_closeout_in_turn(transcript_path):
     the same DONE and YOUR MOVE with three words changed. Refusing the repeat
     would have demanded a THIRD message, so R7 suppresses instead of blocking.
     """
+    # `current_text` is the close-out being judged RIGHT NOW. At Stop time the
+    # transcript already contains it, so without this the walk-back meets it first,
+    # sees its own DONE heading, and reports "already sent this turn". Skipping it is
+    # exact: only a message whose text matches the one under judgement is skipped, so
+    # a genuine earlier close-out still suppresses exactly as R7 intends.
+    head = (current_text or "").strip()[:200]
+    skipped_self = not head
     for ln in reversed(tail_lines(transcript_path)):
         if '"type"' not in ln:
             continue
@@ -181,6 +189,29 @@ def prior_closeout_in_turn(transcript_path):
                 return False
             continue
         if t == "assistant":
+            # SKIP THE MESSAGE UNDER JUDGEMENT. Measured 2026-09-05: at Stop time the
+            # transcript ALREADY contains the close-out being judged, so walking back
+            # from the end met it first, saw its DONE heading, and reported "a
+            # close-out was already sent this turn". Every well-formed close-out
+            # suppressed itself.
+            #
+            # The damage: 126 of ~127 blocking findings that reached the Stop path
+            # were suppressed, against exactly 1 real block in the tool's lifetime.
+            # Eight blocking rules (R1, R5, R6, R8, R9, R10, R11, R12) have been inert
+            # since R7 shipped on 2026-08-17. The advisory log records them firing 378,
+            # 312 and 308 times while nothing was ever refused.
+            #
+            # R7's intent is preserved exactly: do not demand a THIRD message when a
+            # close-out has genuinely already reached him. That needs a PRIOR one, so
+            # the first assistant message seen is skipped and the search continues.
+            if not skipped_self and head:
+                cc = (d.get("message") or {}).get("content") or []
+                body = cc if isinstance(cc, str) else "".join(
+                    b.get("text") or "" for b in cc
+                    if isinstance(b, dict) and b.get("type") == "text")
+                if " ".join(head.split())[:80] in " ".join(body.split()):
+                    skipped_self = True
+                    continue
             c = (d.get("message") or {}).get("content") or []
             if isinstance(c, str):
                 if DONE_HEADING.search(c):
@@ -449,12 +480,122 @@ def _done_lines(text):
     out = []
     for ln in before.splitlines():
         s = ln.strip()
-        if s.startswith(("-", "*")) and len(s) > 12:
+        # NUMBERED ITEMS COUNT TOO. Until 2026-09-07 this only saw "-" and "*"
+        # bullets, so every close-out I write, which numbers its items, was
+        # invisible to every length and count rule below. the owner: "i feel like
+        # the above is way too wordy and redundant compared to what i intended
+        # for the closeout shape".
+        if (s.startswith(("-", "*")) or re.match(r"^\d+[.)]\s", s)) and len(s) > 12:
             out.append(s)
     return out
 
 
-def check(text, supplied=""):
+def _repo_of_cwd():
+    """The repo key jobq records at enqueue: git toplevel, else ~/.claude."""
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=5)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def _drain_loaded():
+    """Is `com.the owner.jobq-drain` loaded, so a queued job actually gets started?
+
+    Fails CLOSED (returns False) on any error: if this cannot be established, the
+    stricter blocking arm of R13 applies, which is the safe direction.
+    """
+    try:
+        out = subprocess.run(["/bin/launchctl", "list"], capture_output=True,
+                             text=True, timeout=5)
+        return "com.the owner.jobq-drain" in out.stdout
+    except Exception:
+        return False
+
+
+def _filter_unwaited(rows, ps_output):
+    """Drop the jobs some live `jobq wait` is already listening for.
+
+    Matching the ID is the point. A waiter attached to job 51 is not listening
+    for job 54, and a bare `jobq wait` substring test would have called this
+    session covered on the very day it was not.
+    """
+    watched = set(re.findall(r"jobq wait\s+#?(\d+)", ps_output))
+    return [(i, s) for (i, s) in rows if str(i) not in watched]
+
+
+def _session_queued_ids(transcript_path):
+    """Job ids THIS session enqueued, read from its own transcript.
+
+    NARROWED 2026-09-04, before this rule had ever shipped, because its first
+    live probe refused a close-out over jobs 48 and 49: launchd feed jobs
+    (`jobq-feed:howarddb r2-sync`, `wa-pull`) that sit queued indefinitely and
+    belong to no session. Repo membership alone would have blocked every
+    close-out in ~/.claude forever, which is the failure class CLAUDE.md already
+    names: a refusal condition broader than the hazard it names.
+
+    The hazard is a job I queued in this turn and then walked away from. The
+    evidence for that is in my own transcript: `jobq add` answers "queued #N".
+    Anything I never enqueued is somebody else's to wait on.
+    """
+    if not transcript_path or not os.path.exists(transcript_path):
+        return None
+    try:
+        with open(transcript_path, "r", encoding="utf-8", errors="ignore") as fh:
+            body = fh.read()
+    except Exception:
+        return None
+    return set(re.findall(r"queued #(\d+)", body))
+
+
+def _unwaited_jobs(only_ids=None):
+    """Jobs still in flight for THIS repo with nothing listening for them.
+
+    ADDED 2026-09-04, from a measured 46-minute silence. Job 54 was queued, the
+    turn ended with no `jobq wait` in the background and no ScheduleWakeup, and
+    the job hit its 900s deadline and was killed. Nothing brought the session
+    back, because nothing had been asked to.
+
+    The distinction that makes this decidable, and it is the whole rule: a
+    FINISHED job needs no waiter, since carryover-queue.py injects every unacked
+    result into the next prompt for this repo. An IN-FLIGHT job has no such
+    carrier. The inbox cannot deliver a result that does not exist yet, so a
+    queued or running job with no live waiter is work that reaches nobody.
+
+    Fails open on every error. A guard that cannot read its own state must not
+    end a turn; blocking real work because sqlite was locked is worse than the
+    thing being guarded.
+    """
+    db = os.path.join(os.path.expanduser("~"), ".claude", "state", "jobq.db")
+    if not os.path.exists(db):
+        return []
+    try:
+        import sqlite3
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True, timeout=2)
+        try:
+            rows = con.execute(
+                "SELECT id, state FROM jobs WHERE state IN ('queued','running') "
+                "AND repo = ?", (_repo_of_cwd(),)).fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return []
+    if only_ids is not None:
+        rows = [(i, s) for (i, s) in rows if str(i) in only_ids]
+    if not rows:
+        return []
+    try:
+        ps = subprocess.run(["/usr/bin/pgrep", "-fl", "jobq wait"],
+                            capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return []
+    return _filter_unwaited(rows, ps)
+
+
+def check(text, supplied="", inflight=None, drain=None):
     problems = []
     lines = text.splitlines()
     first = next((ln.strip() for ln in lines if ln.strip()), "")
@@ -694,6 +835,100 @@ def check(text, supplied=""):
                     % (m_nothing.group(0).strip()[:40], rest[:140])
                 )
 
+    # --- R13 ADDED 2026-09-04 ---------------------------------------------
+    # THE CARRIER MUST BE LISTENING. R10 exempts a deferral that names a job id
+    # ("queued as job #54") because a Codex job is a real carrier that comes due.
+    # It is only a carrier while something is waiting for it. On 2026-09-04 job
+    # 54 was queued, the turn ended, no `jobq wait` was running and no wakeup was
+    # scheduled, and the job was killed at its 900s deadline. the owner came back 60
+    # minutes later to ask why the session had gone quiet. The exemption was
+    # sound and the thing it pointed at was not attached to anything.
+    #
+    # This is state, not phrasing, so it is a hook rule rather than a loaded one:
+    # a careful reader cannot disagree about whether a process is running. It is
+    # also the exact shape CLAUDE.md already names for background work, applied
+    # to the one lane that had no waiter, since `jobq` notifies nobody on its own
+    # (measured the same day: the reaper's `notify` call is dead code).
+    # check() is PURE: live state is injected by the caller, never probed here.
+    # The first version defaulted to reading jobq when inflight was None, so the
+    # self-test's own arms hit the real database and the suite passed or failed
+    # on whatever happened to be queued on this box. A test whose verdict moves
+    # with the environment is not a test. main() does the I/O and passes it in.
+    unwaited = inflight or []
+    if unwaited:
+        ids = ", ".join("#%s (%s)" % (i, s) for i, s in unwaited[:6])
+        # NARROWED 2026-09-04, the day after it shipped, and not to let a batch through.
+        # The hazard R13 names is a result that reaches NOBODY. A queued job has a real
+        # carrier when `com.the owner.jobq-drain` is loaded: the daemon starts it every
+        # 900s, the reaper now pushes a phone notification on any stalled or failed
+        # ending, and `jobq inbox` injects every finished result into the next prompt
+        # for this repo. With all three live, an unwaited job is not silence, it is
+        # asynchronous. Blocking on it would refuse a legitimate unattended batch, which
+        # is the failure class already written into CLAUDE.md: a guard whose refusal
+        # condition is broader than the hazard it names.
+        #
+        # So: no carrier at all is still BLOCKING. Carrier present but no in-session
+        # waiter is ADVISORY, because the only thing lost is that THIS session will not
+        # wake for it, and whether that matters is a judgement a hook cannot make.
+        carrier = _drain_loaded() if drain is None else drain
+        problems.append(
+            "%s %d job(s) are in flight for this repo with no `jobq wait` on them: %s. %s"
+            % ("R13a" if carrier else "R13", len(unwaited), ids,
+               ("The drain daemon is loaded, so results still reach the owner by phone on a "
+                "bad ending and by `jobq inbox` on a good one. Attach a waiter only if "
+                "THIS session needs to act on the result."
+                if carrier else
+                "com.the owner.jobq-drain is NOT loaded, so nothing will start or reap these "
+                "and the result reaches nobody. Run `jobq wait <id>` in the background, or "
+                "load the daemon, or kill the job and say so."))
+        )
+
+    # R14, 2026-09-07. CLAUDE.md fixes the shape as "what changed, file or
+    # system, ONE LINE EACH, MAX 4 LINES, result first". the owner had to say it
+    # again: "i feel like the above is way too wordy and redundant compared to
+    # what i intended for the closeout shape". The rule existed; nothing counted.
+    done_items = _done_lines(text)
+    if len(done_items) > 4:
+        problems.append(
+            "R14 DONE carries %d items; the format is max 4 (CLAUDE.md 'Session "
+            "close-out format is fixed': one line each, max 4 lines, result "
+            "first). Merge or drop, do not renumber." % len(done_items)
+        )
+    longest = max((len(x) for x in done_items), default=0)
+    if longest > 300:
+        worst = max(done_items, key=len)
+        problems.append(
+            "R14b a DONE item runs %d characters. 'One line each' means one line: "
+            "the result and the file, not the reasoning behind it. Worst line "
+            "starts %r." % (longest, worst[:70])
+        )
+
+    # R15, 2026-09-07. the owner: "i told u to ignore PT so why did u still surface
+    # it to me in the YOUR MOVE". Work handed to another session is that
+    # session's, and repeating its open question back to him is asking him to
+    # carry a message he already delegated. YOUR MOVE is for what only he can
+    # do IN THIS repo.
+    _before, _ymove = split_sections(text)
+    if _ymove:
+        here = (_repo_of_cwd() or "").rsplit("/", 1)[-1].lower()
+        others = {"premier-trophy": ("premier-trophy", "a venture", "獎盃", " pt "),
+                  "a venture": ("another venture", "another venture"),
+                  "a venture": ("another venture",), "another venture": ("another venture",),
+                  "outreach": ("outreach",), "hstack": ("hstack",)}
+        low = " " + _ymove.lower() + " "
+        for repo, tokens in others.items():
+            if repo == here:
+                continue
+            hit_tok = next((t for t in tokens if t in low), None)
+            if hit_tok:
+                problems.append(
+                    "R15 YOUR MOVE raises %s while this session is in %s (matched "
+                    "%r). Work handed to another session is not the owner's move: it "
+                    "is that session's. Drop it, or state it under DONE as handed "
+                    "over." % (repo, here or "?", hit_tok.strip())
+                )
+                break
+
     hit = BANNED.search(text)
     if hit:
         problems.append(
@@ -718,6 +953,45 @@ def _self_test():
     def check_arm(cond, label):
         if not cond:
             fails.append(label)
+
+    # ---- R13: an in-flight job must have something waiting on it -----------
+    clean = "DONE\n- Answered the question, and the count was 961.\n\nYOUR MOVE\n- Nothing."
+    # No carrier at all: blocking.
+    check_arm(any(p.startswith("R13 ") for p in
+                  check(clean, inflight=[(54, "queued")], drain=False)),
+              "r13: let a job through with no waiter AND no drain daemon")
+    # Carrier present: advisory only, so an unattended batch is not refused.
+    r13c = check(clean, inflight=[(54, "queued")], drain=True)
+    check_arm(any(p.startswith("R13a ") for p in r13c),
+              "r13a: carrier present should still be reported")
+    check_arm(not any(p.startswith("R13 ") for p in r13c),
+              "r13a: carrier present must NOT block")
+    check_arm(not any(p.startswith(("R13 ", "R13a ")) for p in
+                      check(clean, inflight=[], drain=False)),
+              "r13 negative control: fired with nothing in flight")
+    # The arm that matters, and the one a substring test would fail: a waiter
+    # attached to a DIFFERENT job does not cover this one.
+    check_arm(_filter_unwaited([(54, "queued")], "83321 jobq wait 51\n") == [(54, "queued")],
+              "r13: a waiter on another job was counted as cover")
+    check_arm(_filter_unwaited([(54, "queued")], "83321 jobq wait 54\n") == [],
+              "r13: an attached waiter was not recognised")
+    check_arm(_filter_unwaited([(54, "queued")], "") == [(54, "queued")],
+              "r13: no waiter at all read as covered")
+
+    # THE NARROWING ARM. Jobs 48 and 49 were real launchd feed jobs
+    # (`jobq-feed:howarddb r2-sync`, `wa-pull`) sitting queued in this repo the
+    # first time this rule ran live, and repo membership alone refused a
+    # legitimate close-out over them. Only ids this session enqueued may reach it.
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as _fh:
+        _fh.write('{"t":"queued #54 [codex] deadline 900s"}\n')
+        _tp = _fh.name
+    _ids = _session_queued_ids(_tp)
+    check_arm(_ids == {"54"}, "r13: session-queued ids parsed from transcript")
+    check_arm("48" not in (_ids or set()),
+              "r13: a feed job this session never queued was not excluded")
+    check_arm(_session_queued_ids("/nonexistent/transcript.jsonl") is None,
+              "r13: unreadable transcript must fail open, not claim zero")
+    os.unlink(_tp)
 
     # ---- R9: a completion claim must carry evidence ------------------------
     bare = "DONE\n- Fixed the prune job.\n\nYOUR MOVE\n- Nothing."
@@ -1135,7 +1409,7 @@ def user_supplied(transcript_path):
     return "\n".join(out)
 
 
-BLOCKING_RULES = ("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ")
+BLOCKING_RULES = ("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ", "R13 ")
 
 ADVISE_STATE = os.path.join(os.path.expanduser("~"), ".claude", "state", "closeout-advised.txt")
 
@@ -1170,7 +1444,8 @@ def advise(transcript, text):
     """
     if not text.strip() or not transcript:
         return 0
-    problems = check(text, supplied=user_supplied(transcript))
+    problems = check(text, supplied=user_supplied(transcript),
+                     inflight=_unwaited_jobs(_session_queued_ids(transcript)))
     if not problems:
         return 0
     blocking = [p for p in problems if p.startswith(BLOCKING_RULES)]
@@ -1180,15 +1455,30 @@ def advise(transcript, text):
     # Report each close-out ONCE. Without this the same finding is re-injected
     # on every prompt until the next assistant message lands, which is how the
     # freshness gate below this hook got written in the first place.
+    # ONE SLOT WAS NOT ENOUGH, MEASURED 2026-09-06. This file held exactly one
+    # hash, so with several live sessions on the box the slot thrashed: session A
+    # advises on close-out X and writes X, session B writes Y, and A's next prompt
+    # reads Y, does not match, and re-delivers X. The log shows what that cost:
+    # 1,142 advisory lines carrying 123 distinct findings, so 1,019 were repeats,
+    # 859 of them within five seconds of the previous copy, and one finding
+    # ("R12 YOUR MOVE opens with '- Nothing.'") was delivered 479 times. the owner:
+    # "'Nothing. Finished.' is still duplicated".
+    #
+    # A ROLLING SET fixes it without a lock: every key ever advised stays for the
+    # last KEEP entries, so a second session cannot evict a first session's key.
+    KEEP = 200
     key = hashlib.sha1(text.strip().encode("utf-8", "replace")).hexdigest()
     try:
         os.makedirs(os.path.dirname(ADVISE_STATE), exist_ok=True)
+        seen = []
         if os.path.exists(ADVISE_STATE):
             with open(ADVISE_STATE, encoding="utf-8") as fh:
-                if fh.read().strip() == key:
-                    return 0
+                seen = [ln.strip() for ln in fh if ln.strip()]
+        if key in seen:
+            return 0
+        seen.append(key)
         with open(ADVISE_STATE, "w", encoding="utf-8") as fh:
-            fh.write(key)
+            fh.write("\n".join(seen[-KEEP:]) + "\n")
     except Exception:
         pass
     _log_advisory(blocking, prefix="advise | ")
@@ -1220,7 +1510,8 @@ def main():
         return 0
     if not turn_did_work(transcript):
         return 0
-    problems = check(text, supplied=user_supplied(transcript))
+    problems = check(text, supplied=user_supplied(transcript),
+                     inflight=_unwaited_jobs(_session_queued_ids(transcript)))
     if not problems:
         return 0
 
@@ -1250,7 +1541,7 @@ def main():
     # R7 2026-08-17, the owner: "u just double replied". Once a close-out has been
     # delivered in this turn, no rule here may demand another message. The block
     # is recorded so the rule stays measurable, and the turn is allowed to end.
-    if prior_closeout_in_turn(transcript):
+    if prior_closeout_in_turn(transcript, text):
         try:
             log = os.path.join(os.path.expanduser("~"), ".claude", "closeout-advisory.log")
             stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1286,7 +1577,14 @@ def main():
         "decision": "block",
         "reason": (
             "CLOSE-OUT SHAPE: %d blocking finding(s).\n%s\n\n"
-            "Fix the close-out and send it again. These are not style notes: "
+            # THIS LINE CAUSED THE DOUBLE-TEXT, four times in a row. A Stop
+            # hook fires AFTER the message has reached the owner, so "send it
+            # again" orders a second full close-out for something he has
+            # already read. His words, 2026-09-07: "u still double texted
+            # the closeout shape, u made a mistake 4 times consecutively".
+            "DO NOT RE-SEND THE CLOSE-OUT. He has already read it. Reply with "
+            "the DELTA ONLY: open with DONE, carry only the corrected item(s), "
+            "and nothing he has already seen. These are not style notes: "
             "each one names work that was neither done nor handed over."
             % (len(blocking), listed)
         )}))

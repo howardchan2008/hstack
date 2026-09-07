@@ -418,7 +418,27 @@ def main():
         "these injected lines are read from."
     )
 
-    sys.stdout.write("\n".join(lines) + "\n")
+    # REPEATS BECOME A POINTER, added 2026-09-06. Measured over 14 days: this
+    # block was re-injected identically 161 times inside single sessions, 269 KB,
+    # the largest single duplication on the box. The queue itself does not shrink
+    # when the text stops repeating, so the pointer still states the obligation
+    # and names the command that reprints it in full.
+    block = "\n".join(lines)
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+        from inject_once import once
+        n_items = sum(1 for ln in lines if ln.lstrip().startswith("- "))
+        block = once(
+            session_id, "carryover", block,
+            pointer=("CARRYOVER QUEUE unchanged since it was shown earlier in this "
+                     "session (%d item(s) still owed, nothing new). They are still "
+                     "owed and none may vanish silently. Reprint: jobq inbox --cwd ."
+                     % n_items),
+        )
+    except Exception:
+        pass
+    if block:
+        sys.stdout.write(block + "\n")
 
 
 def _self_test():
@@ -438,6 +458,12 @@ def _self_test():
     here = os.path.abspath(__file__)
     root = tempfile.mkdtemp(prefix="carryover-selftest-")
     sid = "selftest-session"
+    # Several cases below replay the SAME block under this one session id, which
+    # in production is exactly the repeat inject_once collapses to a pointer.
+    # Case 12 asserts on content case 10 already produced, so the collapse would
+    # read as a failure of a hook that is working. Tests opt out; the live path
+    # never sets this.
+    os.environ["INJECT_ONCE_DISABLE"] = "1"
     tdir = os.path.join(root, "tasks", sid)
     os.makedirs(tdir, exist_ok=True)
 

@@ -20,13 +20,14 @@ so a missing or broken lib degrades to "no stripping", never to a silent hook.
 SECOND CLASS, added 2026-09-06 and it cost a blocked close-out. A completed
 `run_in_background` job re-invokes the session by delivering a <task-notification> as a
 UserPromptSubmit prompt, and that block quotes the whole command back inside <summary>.
-item-coverage then demanded work on two "items" that were a bare <tool-use-id> tag and a
-line of the session's own python, because the splitter matched `use` inside the tag name
-and `add` inside the code. The paragraph-span rule above cannot reach it: the notification
-carries no blank line, so it is ONE paragraph, and dropping the span would take any real
-question sharing it. So the notification is removed STRUCTURALLY by its own tags first,
-and the marker-span logic runs on what is left. The harness names it in its own first
-line ("NOT USER INPUT"), so this reads the label rather than guessing at the shape.
+item-coverage then demanded work on two "items" that were
+`<tool-use-id>toolu_013w2nCcYyUey9vkEWrEd553</tool-use-id>` and a line of this session's
+own python, because the splitter matched `use` inside the tag and `add` inside the code.
+The paragraph-span rule above cannot reach it: the notification has no blank line, so it
+is ONE paragraph, and dropping the span would take any real question sharing it. So the
+notification is removed STRUCTURALLY by its own tags first, and the marker-span logic
+runs on what is left. The harness names it in its own first line ("NOT USER INPUT"), so
+this is reading the label, not guessing at the shape.
 """
 import re
 import sys
@@ -53,6 +54,37 @@ _TASKPROSE = re.compile(
     r"|is NOT real user input"
     r"|must NOT be treated as approval).*$",
     re.I | re.M)
+
+# A BARE TAG IS NOT A BANNER. Found by the Codex review lane, job #672
+# (hooks/lib/hookpaste.py:118-120): any prompt merely CONTAINING notification XML
+# had that XML deleted, so asking to review, quote or transform such a block
+# returned a prompt with the subject removed and no sign that anything was cut.
+# The harness banner always carries its own prose line, and the tag form always
+# carries the id/output tags together. Either signature counts; a lone
+# `<task-notification>` pasted by the owner does not.
+_BANNER_PROSE = (
+    "automated background-task event",
+    "SYSTEM NOTIFICATION - NOT USER INPUT",
+    "No human input has been received",
+)
+
+
+_BANNER_IDTAGS = ("<task-id>", "<tool-use-id>", "<output-file>")
+
+
+def _is_task_banner(text):
+    """True only for the harness's own notification, never for pasted XML.
+
+    Two signatures, either is enough. The prose line, which the harness always
+    emits, or a `<task-notification>` block carrying one of the id tags the
+    harness always fills in. A truncated opener still counts, because that shape
+    is a notification cut by a context boundary and it kept its `<task-id>`
+    (self-test case, line 209). A block with only a `<summary>` is the owner's.
+    """
+    if any(p in text for p in _BANNER_PROSE):
+        return True
+    return "<task-notification>" in text and any(t in text for t in _BANNER_IDTAGS)
+
 
 MARKERS = (
     # Stop chain banners
@@ -115,7 +147,7 @@ def strip_hook_paste(text):
     are one paragraph and the span rule would swallow anything sharing it."""
     if not text:
         return text
-    if any(h in text for h in _TASKHINT):
+    if _is_task_banner(text):
         text = _TASKPROSE.sub("", _TASKFURNITURE.sub("", _TASKNOTE.sub("", text)))
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if not any(m in text for m in MARKERS):
@@ -173,7 +205,7 @@ def _self_test():
         "[SYSTEM NOTIFICATION - NOT USER INPUT]\n"
         "This is an automated background-task event, NOT a message from the user.\n"
         "<task-notification>\n<task-id>bu39ky0jg</task-id>\n"
-        "<tool-use-id>toolu_deadbeef</tool-use-id>\n"
+        "<tool-use-id>toolu_013w2nCcYyUey9vkEWrEd553</tool-use-id>\n"
         "<output-file>/tmp/x.output</output-file>\n<status>completed</status>\n"
         "<summary>Background command \"cat foo\" completed (exit code 0)\n"
         "   if sid: sess[d].add(sid)\n</summary>\n</task-notification>"
