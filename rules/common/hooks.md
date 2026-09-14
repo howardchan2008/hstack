@@ -2,19 +2,20 @@
 
 ## Events configured in `~/.claude/settings.json`
 PreToolUse (validation and refusal, every guard lives here), PostToolUse, UserPromptSubmit (injected content is read; a reminder to go look is not), SessionStart, PreCompact, SessionEnd, Stop.
-Read the live set before adding one and update this list in the same change:
+
+Check live set before adding; update this list.
 `python3 -c "import json;print(sorted(json.load(open('$HOME/.claude/settings.json'))['hooks']))"`
 
 ## Permissions
-The allowlist is `permissions.allow` in `~/.claude/settings.json`. There is no `allowedTools` key in `~/.claude.json`. An allow entry does not outrank a hook: PreToolUse still runs and can still refuse. Never pass the dangerously-skip-permissions flag.
+`permissions.allow` in `~/.claude/settings.json`. No `allowedTools` key in `~/.claude.json`. Allow doesn't outrank hook: PreToolUse still runs, can refuse. Never pass dangerously-skip-permissions.
 
 ## Task tracking: check the live tool list, never assume
-`TodoWrite` is gone; `TaskCreate`/`TaskUpdate` were removed on newer models and `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set but unreliable (they vanished mid-session and a Sonnet 5 subagent could not load them). Look at the live tool list before naming a task tool; when absent, carry the decomposition into the close-out. A rule ordering a tool the model cannot call fails silently every turn: `cc-whatsnew` flags that class as DEAD-RULE.
+`TodoWrite` gone; `TaskCreate`/`TaskUpdate` removed on newer models; `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` unreliable (vanished mid-session, Sonnet 5 subagent couldn't load). Check live tool list before naming task tool; if absent, carry decomposition to close-out. Rule ordering unavailable tool fails silently each turn: `cc-whatsnew` flags as DEAD-RULE.
 
 ## Redundancy audit, 2026-09-02
 Full table: `~/.claude/reference/hooks-audit-2026-09-02.md`.
-- One principle lives in one hook. The deferral check is closeout-shape R10 only; stop-justify keeps the git facts no regex can see.
-- A hook that writes what nothing reads is removed, not tuned.
-- A guard that acts on one keyword carries `"if": "Bash(*keyword*)"` so the harness skips the spawn.
-- Pasted hook output is never mined for items or facts: `hooks/lib/hookpaste.py`.
-- Before adding a hook: which existing hook owns this principle, what does it cost per call, who reads what it writes.
+- One principle per hook. Deferral check: closeout-shape R10 only; stop-justify keeps git facts regex can't see.
+- Hooks writing unread output: removed, not tuned.
+- Guards acting on one keyword carry `"if": "Bash(*keyword*)"` so harness skips spawn.
+- Pasted hook output never mined for items/facts: `hooks/lib/hookpaste.py`.
+- Before adding hook: which existing hook owns principle, cost per call, who reads output.

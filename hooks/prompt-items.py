@@ -97,11 +97,11 @@ def split_enumerated(line):
     """Return the clauses of a hand-numbered line, or None if it is not one.
 
     Requires three or more markers running 1,2,3... in order. Two is too easy to
-    hit by accident ("send 2 files to 3 people"), and a run that does not ascend
+    hit by accident ("send 2 files to 3 people"), and a run that does not a venture
     from 1 is a quantity, not a list.
     """
     all_hits = [(m.start(), m.end(), int(m.group(1))) for m in MARKER.finditer(line)]
-    # Longest run that ascends 1,2,3 with no gaps. A stray number before the list
+    # Longest run that a venture 1,2,3 with no gaps. A stray number before the list
     # ("send 5 files. 1 do x. 2 do y. 3 do z") must not shift or break the run,
     # which a position-based index check did on the first draft.
     hits, run = [], []
@@ -292,7 +292,7 @@ def split_items(prompt):
         # built from: it carried "1 remove the line. 2 nobody interviewed. ..."
         # inline, the comma rule below cut across the numbers, and three garbage
         # fragments came back with two real items lost. When a line holds three or
-        # more ascending inline markers, split on THOSE and skip the guessing.
+        # more a venture inline markers, split on THOSE and skip the guessing.
         parts = split_enumerated(line)
         # HE NUMBERED IT, so every part is an item. Found 2026-08-29 by a
         # dead-branch arm: "1. fix the footer 2. rebuild the thumbnails 3. send
@@ -546,9 +546,9 @@ if __name__ == "__main__":
                 fails.append(f"pleasantry produced items: {soft!r}")
 
         # 7. Round trip: items saved under one prompt come back on the next.
-        save("testsess", {"last": {"items": ["rotate ascend pw", "give social advice"]}})
+        save("testsess", {"last": {"items": ["rotate a venture pw", "give social advice"]}})
         back = load("testsess").get("last", {}).get("items")
-        if back != ["rotate ascend pw", "give social advice"]:
+        if back != ["rotate a venture pw", "give social advice"]:
             fails.append(f"round trip lost items: {back}")
 
         # 8. FIFTEEN items survive. the owner approved 15 a venture items in one

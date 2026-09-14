@@ -1,17 +1,33 @@
 # Security Guidelines
 
 ## Before any commit
-No hardcoded secrets. Inputs validated. Parameterized queries. Sanitized HTML. CSRF protection. Auth verified. Rate limiting on endpoints. Errors leak nothing sensitive.
+No hardcoded secrets.
+Inputs validated.
+Parameterized queries.
+Sanitized HTML.
+CSRF protection.
+Auth verified.
+Rate limiting on endpoints.
+Errors leak nothing sensitive.
 
 ## Secrets
-Environment variables or a secret manager, never source. Validate required secrets at startup. Rotate anything that may have been exposed.
+Environment variables or secret manager, never source.
+Validate required secrets at startup.
+Rotate exposed secrets.
 
 ## If a security issue is found
-Stop, run the security-reviewer pass, fix CRITICAL before continuing, rotate exposed secrets, then sweep the codebase for the same pattern.
+Stop.
+Run security-reviewer pass.
+Fix CRITICAL before continuing.
+Rotate exposed secrets.
+Sweep codebase for same pattern.
 
 ## A guard inside a wrapper is not a guard
-A spend control or safety check inside a CLI protects only callers who use that CLI. The agent holds a shell, so the billing endpoint is always one `curl` away. This has cost real money twice: a credit check built into an image CLI was bypassed the same hour by calling the endpoint directly, and an earlier run used a Google endpoint whose key sat outside the credit assumed to cover it.
-- **Put the control at PreToolUse.** It is the only layer between the agent and every path.
-- **Order the checks so the expensive verb decides first.** A read-allow rule matching a PREFIX of a billing path is a hole: `/models/` appears inside `:generateContent`, `/deployments/` inside `/images/generations`.
-- **Keep the audit path open** (listing models, reading usage), or shutting a lane down safely becomes impossible.
+Guards inside CLI protect only CLI callers.
+Agent has shell, endpoint always one `curl` away.
+Cost real money twice: image CLI check bypassed by direct endpoint call, Google endpoint key outside assumed scope.
+
+- **Put the control at PreToolUse.** Only layer between agent and every path.
+- **Order the checks so the expensive verb decides first.** Read-allow rule matching PREFIX of billing path = hole: `/models/` in `:generateContent`, `/deployments/` in `/images/generations`.
+- **Keep the audit path open** (listing models, reading usage) or unsafe shutdown.
 - **An override must be explicit and greppable**, never a silent exception.

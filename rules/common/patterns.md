@@ -1,10 +1,13 @@
 # Common Patterns
 
 ## Skeleton projects
-Search for battle-tested skeletons (`gh search repos`, `gh search code`, package registries), read the top two or three yourself (a README and a dependency file answer most of it), clone the best match, iterate inside the proven structure.
+Search battle-tested skeletons (`gh search repos`, `gh search code`, package registries). Read top 2-3. Clone best, iterate in proven structure.
 
 ## Repository pattern
-Standard operations behind an interface (findAll, findById, create, update, delete). Concrete implementations hold storage details; business logic depends on the interface.
+Interface: findAll, findById, create, update, delete. Implementations hold storage. Business logic depends on interface.
 
 ## API response envelope
-Consistent shape: status indicator, nullable data payload, nullable error message, pagination metadata where relevant.
+- Status indicator
+- Data payload (nullable)
+- Error message (nullable)
+- Pagination metadata where relevant

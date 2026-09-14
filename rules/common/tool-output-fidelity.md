@@ -1,22 +1,27 @@
 # Tool-output fidelity
 
-Long tool output may be compressed into a rendered image. The axis is whether downstream use needs verbatim fidelity or only gist. Decide before the call.
+Tool output → rendered image. Verbatim fidelity or gist? Decide pre-call.
 
 ## Never let it compress, pre-slice instead
-1. Anything to be quoted or attributed (misattribution is silent and travels into deliverables).
-2. Anything to be pattern-matched mechanically: `Edit` needs a byte-exact `old_string`.
-3. Numbers landing in money or legal artifacts: amounts, dates, hashes, signatures.
-4. Whitespace-significant content: diffs, YAML, nested markdown, aligned tables.
-5. Absence checks. A line present but unreadable reads as absent.
+
+1. Quoted/attributed: silent misattribution→deliverables.
+2. Mechanical pattern-match: `Edit` needs byte-exact `old_string`.
+3. Money/legal numbers: amounts, dates, hashes, signatures.
+4. Whitespace-significant: diffs, YAML, nested markdown, aligned tables.
+5. Present-but-unreadable = absent.
 
 ## Fine to compress
-Orientation scans, directory listings, output that will be narrowed before acting, re-confirmation, and real UI screenshots.
+
+Orientation scans, dir listings, output narrowed before acting, re-confirmation, UI screenshots.
 
 ## Method
-Pre-slice at the call site: `cut -c1-N`, `sed -n 'A,Bp'`, `head`, targeted `grep`.
+
+Pre-slice at call site: `cut -c1-N`, `sed -n 'A,Bp'`, `head`, targeted `grep`.
 
 ## Known gap
-Identifier sidecars rescue tokens but not BINDINGS: they report that a value occurs, not which clause it belongs to. Legal and financial documents must never go through a render.
+
+Identifier sidecars rescue tokens, not BINDINGS. Report value occurrence, not clause binding. Legal/financial docs: never render.
 
 ## Backstop
-Never assert from a render anything that would be embarrassing to get wrong. Re-read narrowly first.
+
+Re-read narrowly first. Never assert high-stakes items from render alone.
