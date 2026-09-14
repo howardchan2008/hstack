@@ -46,9 +46,59 @@ RECOMPUTE_ONLY=0
 now() { /bin/date +%s; }
 age_of() { echo $(( $(now) - $(/usr/bin/stat -f %m "$1" 2>/dev/null || echo 0) )); }
 
+# ---------- per-prompt: model registry + one-shot Fable notice ----------
+# 2026-09-09: this used to live in the recompute below, which has a 300s cache in
+# front of it. Two consequences, both measured: (1) the "you are on Fable" line
+# was baked into the cached blob and therefore REPEATED on every prompt for five
+# minutes, which is the warning spending the window it warns about; (2) a session
+# only registered its model once per cache cycle, so the fan-out counter
+# undercounted. Registration is cheap and runs every prompt; the notice is
+# printed once per session and is never written to the cache.
+FABLE_REG="$HOME/.claude/state/model-live"
+ONESHOT=""
+SELF_FABLE=0
+if [ "$RECOMPUTE_ONLY" -eq 0 ]; then
+  # Read the model from the session's own transcript, not the process list:
+  # Claude.app launches without --model and /model switches in-session, so argv
+  # answers the wrong question. Take the LAST model line so a switch in either
+  # direction is respected. tail keeps this to a fixed read.
+  TRANSCRIPT=$(printf '%s' "$INPUT" | /usr/bin/sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | /usr/bin/head -1)
+  CUR_MODEL=""
+  if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+    CUR_MODEL=$(/usr/bin/tail -c 400000 "$TRANSCRIPT" 2>/dev/null \
+      | /usr/bin/grep -o '"model"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null \
+      | /usr/bin/tail -1)
+  fi
+  case "$CUR_MODEL" in *claude-fable-5*) SELF_FABLE=1 ;; esac
+  /bin/mkdir -p "$FABLE_REG" 2>/dev/null
+  if [ "$SESSION" != "unknown" ]; then
+    if [ "$SELF_FABLE" -eq 1 ]; then printf 'fable\n' > "$FABLE_REG/$SESSION_KEY" 2>/dev/null
+    else printf 'other\n' > "$FABLE_REG/$SESSION_KEY" 2>/dev/null
+         /bin/rm -f "$FABLE_REG/$SESSION_KEY.said" 2>/dev/null; fi
+    if [ "$SELF_FABLE" -eq 1 ] && [ ! -f "$FABLE_REG/$SESSION_KEY.said" ]; then
+      : > "$FABLE_REG/$SESSION_KEY.said" 2>/dev/null
+      ONESHOT=" [FABLE-SESSION] This session is on Fable 5.1. Opus 5 is the default since 2026-09-03, so this is opt-in and it is for ONE hard problem: think, decide, write the spec, then hand execution to Codex (jobq add) or to an Opus session. Measured 2026-09-03 on the days both ran: a Fable call costs 1.6x an Opus call and 58.5% of its bill is cache WRITE, so every long tool result and every pasted block is charged at \$12.50/MTok here. the owner's own account is that Opus lets him work a full 5-hour window and Fable does not. Mechanical work belongs elsewhere: /model claude-opus-5."
+    fi
+  fi
+fi
+
+emit_json() {  # $1 = message text; prints one JSON line
+  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' \
+    "$(printf '%s' "$1" | /usr/bin/sed 's/"/\\"/g')"
+}
+
 # ---------- fast path: serve cache, refresh in background if stale ----------
 if [ "$RECOMPUTE_ONLY" -eq 0 ] && [ -f "$CACHE" ]; then
-  /bin/cat "$CACHE"
+  if [ -z "$ONESHOT" ]; then
+    /bin/cat "$CACHE"
+  elif [ -s "$CACHE" ]; then
+    # Splice the one-shot line into the cached JSON without rewriting the cache,
+    # so the next prompt gets the cached line alone.
+    /usr/bin/awk -v add="$(printf '%s' "$ONESHOT" | /usr/bin/sed 's/"/\\"/g')" \
+      '{ sub(/"\}\}[[:space:]]*$/, ""); print $0 add "\"}}" }' "$CACHE"
+  else
+    emit_json "$ONESHOT"
+  fi
 
   if [ "$(age_of "$CACHE")" -ge "$TTL" ]; then
     STALE_LOCK=0
@@ -171,36 +221,32 @@ fi
 # 2026-09-02: Fable 5.1 fan-out is what empties the 5-hour window. Measured that day:
 # 14 live sessions on claude-fable-5-1 at once, each call 1.8x an Opus 5 call at list
 # price, and the window hit 100% in under 30 minutes where Opus 5 lasts the full 5h.
-# Count the live Fable sessions (the launcher argv carries --model) and say so when
-# more than two are open. Mechanically decidable, so it belongs here and not in prose.
-FABLE_LIVE=$(/bin/ps -eo command 2>/dev/null | /usr/bin/grep -c -- '[-]-model claude-fable-5' 2>/dev/null || echo 0)  # [-] so grep's own argv is not counted
+# Count the live Fable sessions and say so when more than two are open.
+# Mechanically decidable, so it belongs here and not in prose.
+# 2026-09-09: the argv counter above read 0 on a box with seven live sessions.
+# Claude.app launches every desktop session without --model and the model is then
+# chosen in-session with /model, so argv never carries it -- the same reason the
+# SELF check below already reads the transcript. grep's exit 1 on no-match also
+# fed "0\n0" into the test through `|| echo 0`, so line 178 printed "integer
+# expected" on every prompt. Sessions now register their own model in a shared
+# directory, which is the only counter that also survives a split
+# CLAUDE_CONFIG_DIR (this box runs scratch config dirs under /private/tmp).
 FABLE_HIT=0
-if [ "${FABLE_LIVE:-0}" -gt 2 ]; then
-  MSG="${MSG} [FABLE-FANOUT] ${FABLE_LIVE} Fable 5.1 sessions are live on this box. Fable is the scarce thinking budget: one session at a time, effort high, write the spec and hand execution to Codex (jobq). Everything parallel runs on Opus 5 (/model claude-opus-5)."
-  FABLE_HIT=1
-fi
-
-# Is THIS session on Fable? Opus 5 became the settings default on 2026-09-03, so
-# sitting on Fable is now a deliberate choice and the session should be told what
-# the choice is for. Read the model out of the session's own transcript rather
-# than the process list: a session that switched with /model keeps its launch argv,
-# so argv answers the wrong question. tail keeps this to a fixed read.
-SELF_FABLE=0
-TRANSCRIPT=$(printf '%s' "$INPUT" | /usr/bin/sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | /usr/bin/head -1)
-if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  if /usr/bin/tail -c 400000 "$TRANSCRIPT" 2>/dev/null \
-     | /usr/bin/grep -q '"model"[[:space:]]*:[[:space:]]*"claude-fable-5' 2>/dev/null; then
-    SELF_FABLE=1
-  fi
-fi
-if [ "$SELF_FABLE" -eq 1 ]; then
-  MSG="${MSG} [FABLE-SESSION] This session is on Fable 5.1. Opus 5 is the default since 2026-09-03, so this is opt-in and it is for ONE hard problem: think, decide, write the spec, then hand execution to Codex (jobq add) or to an Opus session. Measured 2026-09-03 on the days both ran: a Fable call costs 1.6x an Opus call and 58.5% of its bill is cache WRITE, so every long tool result and every pasted block is charged at \$12.50/MTok here. the owner's own account is that Opus lets him work a full 5-hour window and Fable does not. Mechanical work belongs elsewhere: /model claude-opus-5."
+# Registration and the one-shot notice happen above, once per prompt, outside the
+# cache. Only the rolling fan-out count belongs in the cached blob.
+/usr/bin/find "$FABLE_REG" -type f -mmin +1440 -delete 2>/dev/null
+FABLE_LIVE=$(/usr/bin/find "$FABLE_REG" -type f -mmin -15 -exec /usr/bin/grep -l fable {} + 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d ' ')
+[ -n "${FABLE_LIVE}" ] || FABLE_LIVE=0
+if [ "$FABLE_LIVE" -gt 2 ]; then
+  MSG="${MSG} [FABLE-FANOUT] ${FABLE_LIVE} Fable 5.1 sessions took a prompt in the last 15 minutes. Fable is the scarce thinking budget: one session at a time, effort high, write the spec and hand execution to Codex (jobq). Everything parallel runs on Opus 5 (/model claude-opus-5)."
   FABLE_HIT=1
 fi
 
 if [ "$STATUS" = "OK" ] && [ "$IDLE_HIT" -eq 0 ] && [ "$FABLE_HIT" -eq 0 ]; then
   TMP="${CACHE}.$$"
   : > "$TMP" 2>/dev/null && /bin/mv -f "$TMP" "$CACHE" 2>/dev/null
+  # Cache stays empty (silent); the one-shot notice is this prompt only.
+  [ -n "$ONESHOT" ] && emit_json "$ONESHOT"
   exit 0
 fi
 
@@ -216,5 +262,7 @@ printf '%s\n' "$OUTPUT" > "$TMP" 2>/dev/null && /bin/mv -f "$TMP" "$CACHE" 2>/de
 # In --recompute mode the caller is a background refresh: stay silent.
 [ "$RECOMPUTE_ONLY" -eq 1 ] && exit 0
 
-printf '%s\n' "$OUTPUT"
+# The cache holds the repeatable line only. The one-shot notice is added to this
+# prompt's output and never persisted, so the next prompt reads the cache clean.
+emit_json "${MSG}${ONESHOT}"
 exit 0

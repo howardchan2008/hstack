@@ -126,6 +126,7 @@ KNOWN = {
                               # before a second agent starts work on it (1da63de).
     # Completed from the manifest at build time: every hook
     # this repo ships is known to the checker that verifies it.
+    "ask-surface.py",
     "session-identity.sh",
 }
 
@@ -269,6 +270,22 @@ for r in review:
     print("wiring-verify: REVIEW: " + r)
 PY
 
+# --- the local proxy routing ---------------------------------------------------------------
+# WIRED 2026-09-08. The byte-witness above proves the PATCHES are in the bundle and
+# says nothing about whether traffic reaches them. Measured that day: the on-disk
+# com.the owner.cc-env.plist had been rewritten to set ANTHROPIC_BASE_URL and drop the
+# global HTTPS_PROXY, while the LOADED launchd job still carried the previous
+# arguments. Disk and live disagreed for a day and every check in this tree read
+# clean, because each one reads a different half. Reports, never blocks.
+if [ -x "$HOME/.claude/tools/the local proxy.sh" ]; then
+  prout="$("$HOME/.claude/tools/the local proxy.sh" 2>&1)"
+  if printf '%s' "$prout" | grep -q 'the local proxy: OK'; then
+    ok_frags="$ok_frags · the local proxy"
+  else
+    printf '%s\n' "$prout" | sed 's/^the local proxy: /wiring-verify: the local proxy: /'
+  fi
+fi
+
 # --- hook regex compile check -----------------------------------------------------
 # WIRED 2026-08-14. hook-regex-check.py was written 2026-07-24 to catch the exact
 # failure it was born from: stop-justify.sh S2d used `[?]{0,400}` against BSD grep,
@@ -332,8 +349,16 @@ fi
 # 6h TTL: ten session starts in a morning pay it once, and a guard that starts
 # burning calls is still caught the same day.
 if [ -x "$HOME/.claude/bin/guard-verdict" ]; then
-  if command -v factcache >/dev/null 2>&1; then
-    gvout="$(factcache --ttl 21600 run guard-verdict-count -- "$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
+  # BY ABSOLUTE PATH, because `command -v factcache` is FALSE inside a hook
+  # (measured 2026-09-09). factcache lives in ~/.claude/bin, which is on the
+  # interactive PATH and not on the one hooks inherit, so this test failed every
+  # time and sent every session down the uncached branch. The 6h TTL above was
+  # written, shipped and never once used: wiring-verify measured 16,583ms
+  # standalone, of which guard-verdict was 18,443ms cached-never, across 403
+  # SessionStart fires in 7 days. A cache guarded by a probe that cannot succeed
+  # is worse than no cache, because the comment says the cost was already paid.
+  if [ -x "$HOME/.claude/bin/factcache" ]; then
+    gvout="$("$HOME/.claude/bin/factcache" --ttl 21600 run guard-verdict-count -- "$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
   else
     gvout="$("$HOME/.claude/bin/guard-verdict" --count 2>/dev/null)"
   fi

@@ -38,9 +38,29 @@
 
 set -uo pipefail
 
-DAILY_CAP="${AGENT_BUDGET_DAILY:-8}"
-BOX_DAILY_CAP="${AGENT_BUDGET_BOX_DAILY:-40}"
-WEEKLY_CAP="${AGENT_BUDGET_7D:-200}"
+# DEFAULTS RAISED 2026-09-09, measured. Three separate faults sat here.
+#
+# 1. Session default was 8 while ~/.zshenv line 115 exports 40 and
+#    settings.json sets CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION=40. Env reaches a
+#    hook only when the app process was launched after the export, so every
+#    session started before 2026-09-08 23:34 read 8. All 206 denials in
+#    agent-budget-audit.log are "daily=8/8"; not one is a box or weekly hit.
+#    The declared cap and the enforced cap have to be the same number.
+# 2. Box default equalled the session default (40 = 40), so on this box, which
+#    runs 5 to 7 sessions at once, the box cap would bind at about 6 dispatches
+#    per session: raising the session cap to 40 would have changed nothing.
+#    100 is the value this file's own override example already documents.
+# 3. Weekly 200 binds at OBSERVED volume, not at hypothetical volume: the
+#    ledger's busiest day is 28 dispatches (agent-dispatch.log, 2026-09-03),
+#    so a normal week lands near 196 and trips a cap nobody set deliberately.
+#    300 is the value the override example documents.
+#
+# Everything above these numbers still applies and is unchanged: probation
+# outranks both bypasses, the trust ledger can halve or double the session cap,
+# and headless entrypoints are exempt from the interactive budget entirely.
+DAILY_CAP="${AGENT_BUDGET_DAILY:-40}"
+BOX_DAILY_CAP="${AGENT_BUDGET_BOX_DAILY:-100}"
+WEEKLY_CAP="${AGENT_BUDGET_7D:-300}"
 
 LEDGER="${AGENT_BUDGET_LEDGER:-$HOME/.claude/agent-dispatch.log}"
 AUDIT="${AGENT_BUDGET_AUDIT:-$HOME/.claude/agent-budget-audit.log}"

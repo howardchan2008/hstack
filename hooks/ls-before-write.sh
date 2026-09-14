@@ -77,6 +77,32 @@ present = [m for m in MARKERS if m in entries]
 if not exists and not present:
     sys.exit(0)
 
+
+def tracked_by_git(target):
+    """True when git already holds a copy, so an overwrite is recoverable.
+
+    Added 2026-09-10. The clobber this hook exists to stop happened in a data
+    directory with no version control, where the overwritten file was gone for
+    good. Inside a git work tree the same mistake costs one `git checkout --`,
+    and the block instead costs the whole delegated lane: every Codex job that
+    edits an existing tracked file died here, because a Codex session cannot
+    set LS_GATE_OFF and has no Read tool for this hook to observe.
+
+    Untracked files and non-git directories still block, which is where the
+    original incident lives.
+    """
+    try:
+        return subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", os.path.basename(target)],
+            cwd=os.path.dirname(target) or ".",
+            capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+if exists and not present and tracked_by_git(path):
+    sys.exit(0)
+
 try:
     listing = subprocess.run(
         ["/bin/ls", "-la", parent],

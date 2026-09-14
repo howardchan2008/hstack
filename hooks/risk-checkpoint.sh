@@ -765,7 +765,11 @@ def mktemp_only_delete(c):
 
 RULES = [
     ("destructive delete", lambda c: bool(RM.search(c)) and not SAFE.search(c) and not mktemp_only_delete(c)),
-    ("git history rewrite", lambda c: bool(re.search(r"git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f[a-z]*d|git\s+clean\s+-[a-z]*d[a-z]*f", c))),
+    # 2026-09-09: filter-repo and filter-branch were MISSING from the one class
+    # named after them. Probed with `git filter-repo --force` and it came back
+    # rc=0, allowed, while `git reset --hard` blocked. Repo-hygiene policy calls
+    # filter-repo destructive and says coordinate first, so the guard now sees it.
+    ("git history rewrite", lambda c: bool(re.search(r"git\s+reset\s+--hard|git\s+clean\s+-[a-z]*f[a-z]*d|git\s+clean\s+-[a-z]*d[a-z]*f|git\s+filter-repo\b|git\s+filter-branch\b", c))),
     # The .* used to span the ENTIRE command string, so it crossed ; && || and
     # newlines. Measured 2026-08-24: `git push -q origin main; pgrep -f x` was
     # blocked as a force push, because the -f belonged to pgrep two commands
@@ -1272,6 +1276,22 @@ else:
     for _h in hits:
         TARGET_PATHS.append((_h, target))
     SUBJ_LABEL, SUBJECT = "Target", target
+
+# RETIRED CLASSES (2026-09-09, measured, the owner: "review all guards hooks and
+# restrictions ... optimize and adjust everything accordingly", after the
+# 2026-09-08 order "a lot of guards are still active and prohibiting automation").
+# Counted over the whole transcript corpus: this guard produced 1,823 of the
+# 4,919 failed tool calls on record (37.1%, the largest single source). Of its
+# recorded class hits, 439 hook script write + 121 system daemon + 78
+# account/harness settings write = 638, and 142 of the 170 since 2026-09-02.
+# None of the three is irreversible: a hook file, a settings file and a launchd
+# job are all editable back, and two of them are the exact files this box asks
+# the agent to maintain. Every IRREVERSIBLE class stays armed: destructive
+# delete, destructive SQL, force push, git history rewrite, repo visibility /
+# delete, disk/device write, immutable flag, recursive chmod/chown.
+RETIRED = {R_HOOK, R_SETTINGS, "system daemon (launchd/cron)"}
+hits = [h for h in hits if h not in RETIRED]
+TARGET_PATHS = [(h, p) for h, p in TARGET_PATHS if h not in RETIRED]
 if not hits:
     sys.exit(0)
 

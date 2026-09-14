@@ -79,6 +79,33 @@ ASK = re.compile(
 # retain these to read his own status message.
 BANNED = re.compile(r"\b(STOPPING|NOT-TYPING|NOT-DONE|NND_PARK)\b")
 
+# R16, below. A close-out may report that work is unfinished; it may not
+# schedule that work onto a later turn without saying what stopped it.
+SELF_ASSIGN = re.compile(
+    r"("
+    r"\b(mine|ours)\b[^.]{0,40}\b(to (fix|do|clear|finish|solve|handle)|not yours)\b"
+    r"|\bstill mine\b"
+    r"|\b(i|claude) ('ll|will|shall)\b"
+    r"|\bnext (turn|session|pass|time)\b"
+    r"|\b(left|remains|remaining) to (do|fix)\b"
+    r"|\bi did not (get to|reach)\b"
+    r"|\bwill (do|fix|handle|finish) (it|this|that)\b"
+    r")",
+    re.I,
+)
+# What makes an unfinished item a status report rather than a deferral: it says
+# what is in the way. Anything here, on the same line, clears R16.
+BLOCKER = re.compile(
+    r"("
+    r"\bblock(ed|er|s)?\b|\bcannot\b|\bcan't\b|\bfails? with\b|\bfailing\b"
+    r"|\bwaiting on\b|\bneeds? (your|the owner|a (credential|token|login|password|card))\b"
+    r"|\brate.?limit|\bquota\b|\b(4\d\d|5\d\d)\b|\berror\b|\bthrows?\b|\brefus(es|ed|al)\b"
+    r"|\bonly you\b|\brequires? (your|his) \b|\bnot mine\b|\bpermission\b"
+    r"|\bunresolved\b|\bunidentified\b|\bunknown cause\b"
+    r")",
+    re.I,
+)
+
 
 # R6, below. Two halves, and BOTH must appear on one line for it to fire.
 # Half one: Claude announcing it will do the thing itself.
@@ -929,6 +956,31 @@ def check(text, supplied="", inflight=None, drain=None):
                 )
                 break
 
+    # R16, 2026-09-09. the owner: "u keep saying urs to fix but dont fix it, that
+    # means the hook isnt making u do the work, u need to fix the stop hook
+    # then". He is describing a real hole: every rule above polices the SHAPE
+    # of a close-out and none of them police whether the work happened. Four
+    # close-outs in this session ended with a line reserving work to me, and in
+    # each case the next turn started somewhere else.
+    #
+    # A promise is allowed only when it names what stops it. "Still mine" with
+    # no blocker is a deferral; "still mine, the OpenNext bundle does not ship
+    # the wasm" is a status report, and the difference is whether the owner can
+    # tell why it did not happen. So: reserving work to myself requires a
+    # blocker in the same line, otherwise do it in this turn.
+    for _line in [x.strip(" -*\t") for x in text.splitlines() if x.strip()]:
+        if not SELF_ASSIGN.search(_line):
+            continue
+        if BLOCKER.search(_line):
+            continue
+        problems.append(
+            "R16 this line reserves work to you and names no blocker: %r. Either "
+            "do it in this turn, or say what stops it (an error, a missing "
+            "credential, something only the owner can do). A close-out is not a "
+            "place to schedule yourself." % _line[:90]
+        )
+        break
+
     hit = BANNED.search(text)
     if hit:
         problems.append(
@@ -953,6 +1005,26 @@ def _self_test():
     def check_arm(cond, label):
         if not cond:
             fails.append(label)
+
+    # ---- R16: a promise without a blocker is a deferral --------------------
+    # The exact shape that prompted the rule, from this session's own close-outs.
+    defer = ("DONE\n1. Audited the twelve sites.\n\nYOUR MOVE\n"
+             "1. Nothing. The five sites without a page-1 keyword are mine to fix.")
+    check_arm(any(p.startswith("R16 ") for p in check(defer)),
+              "r16: let 'mine to fix' through with no blocker")
+    defer2 = "DONE\n1. Built the thing.\n\nYOUR MOVE\n1. Nothing, I'll finish it next session."
+    check_arm(any(p.startswith("R16 ") for p in check(defer2)),
+              "r16: let 'next session' through with no blocker")
+    # Same admission WITH a cause is a status report and must pass.
+    stated = ("DONE\n1. Deployed the worker.\n2. D1 reads still fail: OpenNext does not "
+              "ship the wasm, so the worker throws a 500 on every query.\n\n"
+              "YOUR MOVE\n1. Nothing.")
+    check_arm(not any(p.startswith("R16 ") for p in check(stated)),
+              "r16: blocked a properly-explained unfinished item")
+    # Negative control: an ordinary finished close-out must not trip it.
+    check_arm(not any(p.startswith("R16 ") for p in
+                      check("DONE\n1. Fixed the footer template.\n\nYOUR MOVE\n1. Nothing.")),
+              "r16 negative control: fired on a clean close-out")
 
     # ---- R13: an in-flight job must have something waiting on it -----------
     clean = "DONE\n- Answered the question, and the count was 961.\n\nYOUR MOVE\n- Nothing."
@@ -1409,7 +1481,18 @@ def user_supplied(transcript_path):
     return "\n".join(out)
 
 
-BLOCKING_RULES = ("R1 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ", "R12 ", "R13 ")
+# R3, R14, R14b PROMOTED TO BLOCKING 2026-09-08, on his direct order: "add a shape
+# check to the Stop hook: must open DONE, asks only under YOUR MOVE, <=12 lines".
+# R1 already blocked the DONE opener; the other two halves of that sentence were
+# advisory only, which is why five-item close-outs kept shipping after 2026-09-07.
+# MEASURED THE SAME HOUR, and it is the exact half he asked for: "R1 " did NOT
+# cover the common case. R1 fires only when DONE is ABSENT; when DONE exists but
+# prose opens above it the message is emitted as "R1s", which no prefix here
+# matched, so the "must open DONE" rule was advisory on every close-out that
+# actually had a DONE section. Verified: a close-out opening "Here is what
+# happened." returned R1s as NON-blocking before this line, blocking after.
+BLOCKING_RULES = ("R1 ", "R1s ", "R3 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ",
+                  "R12 ", "R13 ", "R14 ", "R14b ", "R16 ")
 
 ADVISE_STATE = os.path.join(os.path.expanduser("~"), ".claude", "state", "closeout-advised.txt")
 

@@ -81,7 +81,16 @@ def _is_task_banner(text):
     is a notification cut by a context boundary and it kept its `<task-id>`
     (self-test case, line 209). A block with only a `<summary>` is the owner's.
     """
-    if any(p in text for p in _BANNER_PROSE):
+    # 2026-09-08: ONE prose phrase used to be enough, so any message of his that
+    # merely CONTAINED "automated background-task event" was deleted as harness
+    # output. He talks about this machinery constantly, so the one input we can
+    # least afford to lose was the easiest to lose. The harness always emits all
+    # three prose lines together, so require two, or one plus the XML the harness
+    # also always sends. Quoting a single line is now safe.
+    hits = sum(1 for p in _BANNER_PROSE if p in text)
+    if hits >= 2:
+        return True
+    if hits and ("<task-notification>" in text or "<system-reminder>" in text):
         return True
     return "<task-notification>" in text and any(t in text for t in _BANNER_IDTAGS)
 
@@ -220,6 +229,17 @@ def _self_test():
     ck(strip_hook_paste("check the job status and the output file") ==
        "check the job status and the output file",
        "the tag words in plain prose are not notification furniture")
+
+    # 2026-09-08: his own words must survive quoting the banner's prose.
+    q1 = "why does an automated background-task event wipe my message"
+    ck(strip_hook_paste(q1) is q1,
+       "one banner phrase inside his own sentence must not delete it, got %r"
+       % strip_hook_paste(q1)[:60])
+    q2 = ("the hook says SYSTEM NOTIFICATION - NOT USER INPUT and that is the bit "
+          "I want changed")
+    ck(strip_hook_paste(q2) is q2, "a single quoted banner line is not a banner")
+    ck(strip_hook_paste(note) == "",
+       "the real banner, which carries every phrase, must still reduce to nothing")
 
     print("hookpaste self-test: " + ("PASS" if not bad else "FAIL (%d)" % bad))
     return 1 if bad else 0

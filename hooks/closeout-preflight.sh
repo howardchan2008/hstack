@@ -48,6 +48,26 @@ if [ -n "$PAYLOAD" ]; then
   printf '%s' "$PAYLOAD" | /usr/bin/python3 "$HOME/.claude/hooks/closeout-shape.py" --advise 2>/dev/null || true
 fi
 
+# WHICH SURFACE HE ASKED ABOUT, printed before the close-out is written.
+# the owner 2026-09-14: "most of ur closeout isnt even fucking relevant to me
+# either, why the fuck do u keep telling me technical items".
+#
+# Deliberately NOT a Stop-time block. closeout-shape.py already carries four
+# rules that scan my wording for the same class of defect (R3, R6, R10, R12,
+# 3,979 firings) and its own comment concedes a blacklist cannot win that race.
+# A Stop block also forces a second message, which he banned on 2026-09-04:
+# "double texting shd be prevented". Printing the constraint before the reply
+# is written costs nothing and arrives in time to change it.
+if [ -n "$PAYLOAD" ]; then
+  _tp="$(printf '%s' "$PAYLOAD" | /usr/bin/python3 -c \
+    'import json,sys
+try: print(json.load(sys.stdin).get("transcript_path",""))
+except Exception: pass' 2>/dev/null)"
+  if [ -n "$_tp" ] && [ -f "$_tp" ]; then
+    /usr/bin/python3 "$HOME/.claude/hooks/ask-surface.py" "$_tp" 2>/dev/null || true
+  fi
+fi
+
 # PATH CORRECTED 2026-09-08: this checked $HOME/CLAUDE.md, project memory that only
 # loads when cwd is $HOME, so disk presence was standing in for context presence in
 # the 511 of 594 sessions started elsewhere. Both files read here are user memory now.

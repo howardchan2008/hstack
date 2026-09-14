@@ -47,6 +47,20 @@ if [ -n "$PAYLOAD" ] \
    && printf '%s' "$PAYLOAD" | grep -q '"prompt"' \
    && [ -n "$PROMPT_VAL" ] \
    && ! printf '%s' "$PROMPT_VAL" | grep -qiE "$TRIGGER"; then
+  # ONCE PER SESSION, added 2026-09-09. This branch announces that the trigger did
+  # NOT fire, which is the one thing the reader can already tell. It is the single
+  # most repeated payload on the box: 1,528 fires in 7 days across 277 transcripts,
+  # 1,329 of them byte-identical repeats inside one session. Kept rather than cut,
+  # because saying once that the guard is armed and quiet is worth 159 chars, and
+  # saying it every prompt is worth none. Fails OPEN on a missing session id.
+  SV_SEEN_DIR="${CLAUDE_SV_STATE_DIR:-$HOME/.claude/.state-verify}"
+  SV_SID="$(printf '%s' "$PAYLOAD" \
+    | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//' | tr -cd 'A-Za-z0-9._-')"
+  if [ -n "$SV_SID" ] && mkdir -p "$SV_SEEN_DIR" 2>/dev/null; then
+    [ -f "$SV_SEEN_DIR/$SV_SID.quiet" ] && exit 0
+    : > "$SV_SEEN_DIR/$SV_SID.quiet" 2>/dev/null || true
+  fi
   echo "STATE-VERIFY: active (no external-claim signal in this prompt). Full rules: CLAUDE.md sec.1. Before any externally-visible claim, check live and cross-verify."
   exit 0
 fi
@@ -82,6 +96,26 @@ SV_STATE_DIR="${CLAUDE_SV_STATE_DIR:-$HOME/.claude/.state-verify}"
 # load everywhere, so reading the file is finally evidence that the rules are loaded.
 if grep -q 'STATE-VERIFY BEFORE YOU SPEAK' "$HOME/.claude/box-policy.md" 2>/dev/null; then
   if [ -n "$PROMPT_VAL" ] && printf '%s' "$PROMPT_VAL" | grep -qiE "$TRIGGER"; then
+    # ONCE PER SESSION, added 2026-09-09. The block above already collapsed the
+    # full rules into this pointer. Nothing collapsed the POINTER: measured over
+    # 277 transcripts in 7 days it fired 1,528 times and 1,329 of those, 86%,
+    # were byte-identical repeats inside one session, 249,730 chars. The rules it
+    # points at are in box-policy.md, which loads once and stays loaded, so the
+    # second copy of this sentence carries no fact the first did not. Said once,
+    # the obligation stands; said 1,329 times it is wallpaper.
+    SV_SEEN_DIR="${CLAUDE_SV_STATE_DIR:-$HOME/.claude/.state-verify}"
+    SV_SID="$(printf '%s' "$PAYLOAD" \
+      | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | head -1 | sed 's/.*:[[:space:]]*"//; s/"$//' | tr -cd 'A-Za-z0-9._-')"
+    # Fails OPEN: no session id, or an unusable state dir, and the pointer still
+    # prints. A lost obligation costs more than a duplicated sentence.
+    if [ -n "$SV_SID" ] && mkdir -p "$SV_SEEN_DIR" 2>/dev/null; then
+      if [ -f "$SV_SEEN_DIR/$SV_SID.ptr" ]; then
+        exit 0
+      fi
+      : > "$SV_SEEN_DIR/$SV_SID.ptr" 2>/dev/null || true
+      find "$SV_SEEN_DIR" -type f -mtime +7 -delete 2>/dev/null || true
+    fi
     echo "STATE-VERIFY: active. Full rules already in context this session (box-policy.md sec.1). Before any externally-visible claim: check live, cross-verify every SOT layer, numbers come from data not prose."
   fi
   exit 0

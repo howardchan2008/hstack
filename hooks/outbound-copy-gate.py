@@ -49,7 +49,21 @@ _SEND_PARTS = [
     r"send-outreach\.py",
 ]
 SEND_RE = re.compile("|".join(_SEND_PARTS), re.I)
-SANCTIONED_RE = re.compile(r"\bpm-send\b|\belysian-outbound\b|send_pm\.py", re.I)
+# `wa-send` joined this list on 2026-09-08, after the owner said "huh liar, evolution
+# api personal is sanctioned". The allowlist held mail lanes only, so a WhatsApp lane he
+# considers sanctioned had no entry and the refusal was reported to him as a policy
+# verdict. It was a gap. wa-send runs the same copy-lint on the caption or body and
+# refuses on any blocking finding, so the check this gate exists for is kept.
+SANCTIONED_RE = re.compile(
+    r"\bpm-send\b|\belysian-outbound\b|send_pm\.py|\bwa-send\b", re.I)
+# READ-ONLY INSTANCES. the owner, 2026-09-09, on linking his father's phone <phone>:
+# "create the qr code to scan my dad's phone ... read only". Evolution has no server-side
+# read-only mode, so the constraint lives here. Any send addressed to one of these instance
+# names is refused outright and no allowlist entry lifts it, because this is his father's
+# personal phone and a message sent through it goes out as him. Reads are untouched.
+READONLY_INSTANCES = ("dad",)
+READONLY_RE = re.compile(
+    r"/message/[a-z]+/(" + "|".join(READONLY_INSTANCES) + r")\b", re.I)
 TEXT_KEYS = ("message", "note", "text", "body", "content", "caption")
 
 
@@ -126,6 +140,16 @@ def main():
 
     if tool == "Bash":
         cmd = tool_input.get("command") or ""
+        # Checked BEFORE the sanctioned allowlist, deliberately: a read-only instance is not
+        # a copy-quality question and there is no wrapper that makes sending from it correct.
+        hit = READONLY_RE.search(cmd)
+        if hit:
+            print("outbound-copy-gate BLOCKED a send on the read-only instance '%s'.\n\n"
+                  "  That instance is paired to the owner's father's own phone, for READING.\n"
+                  "  Anything sent through it goes out as him, from his number.\n"
+                  "  Reads are fine. No flag and no wrapper lifts this one."
+                  % hit.group(1), file=sys.stderr)
+            return 2
         if SEND_RE.search(cmd) and not SANCTIONED_RE.search(cmd):
             print("outbound-copy-gate BLOCKED a raw mail send.\n\n"
                   "  Use `pm-send <draft.txt>`. It unwraps the body, runs\n"

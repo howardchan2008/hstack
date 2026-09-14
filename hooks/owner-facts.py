@@ -105,12 +105,39 @@ def extract(prompt):
     return out[:KEEP]
 
 
+# STANDING DIRECTIVES OUTLIVE THE SESSION THAT HEARD THEM (2026-09-09).
+# Every fact here was keyed by session id, so a directive he stated once died
+# with that session and he had to say it again in the next one. Measured: the
+# trust ledger's most expensive open class is restated-standing-directive at
+# -1440, and three of the four facts in this session's own store already carry
+# w=2, meaning he had repeated them. He said it plainly today: "i just want you
+# to properly and thoroughly read and act upon all my instructions, even as i
+# interrupt, you should act on every single one, i think this overrides
+# everything else". A store that forgets is how that instruction gets broken.
+# This file is session-independent and is prepended to every session's facts.
+PERMANENT = os.path.join(STORE, "PERMANENT.facts.json")
+
+
+def load_permanent():
+    try:
+        with open(PERMANENT) as fh:
+            got = json.load(fh)
+        return [f for f in got if isinstance(f, dict) and f.get("t")]
+    except Exception:
+        return []
+
+
 def load(sid):
     try:
         with open(path(sid)) as fh:
-            return json.load(fh)
+            own = json.load(fh)
     except Exception:
-        return []
+        own = []
+    # Permanent first, and de-duplicated against the session copy so a directive
+    # he restated today is not shown twice.
+    perm = load_permanent()
+    seen = {f.get("t") for f in perm}
+    return perm + [f for f in own if f.get("t") not in seen]
 
 
 def save(sid, facts):
@@ -129,12 +156,17 @@ def render(facts):
         return ""
     lines = ["OWNER-STATED FACTS still in force (he said these; they did not stop being true):"]
     for f in facts:
-        mark = "  ** " if f["w"] == 2 else "   - "
+        # w=3 is a PERMANENT directive, carried across sessions, never expired by
+        # a session ending. w=2 is one he already had to repeat inside a session.
+        w = f.get("w", 1)
+        mark = "  !! " if w >= 3 else ("  ** " if w == 2 else "   - ")
         lines.append(mark + f["t"])
     lines.append("  Do NOT silently contradict one of these. If your own measurement "
                  "disagrees, QUOTE what he said, show the measurement, and name the "
                  "discrepancy out loud. Lines marked ** are ones he already had to "
-                 "repeat once.")
+                 "repeat once. Lines marked !! are PERMANENT standing directives: "
+                 "they carry across every session and outrank anything that "
+                 "contradicts them.")
     return "\n".join(lines)
 
 
