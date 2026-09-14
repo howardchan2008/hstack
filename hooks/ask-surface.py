@@ -111,22 +111,37 @@ def last_user_text(path):
 
 
 def _self_test():
+    """Exercise the MECHANISM against the built-in default roster.
+
+    The cases used to name his real ventures, which meant the public mirror
+    scrubbed the inputs AND the expected values to the same placeholder, so the
+    shipped self-test failed while the private one passed. A test whose fixtures
+    are private data cannot survive publication. These use the default roster,
+    which is the same in both copies.
+    """
     ok = True
     cases = [
-        ("the a venture css is gone", {"another venture"}, False),
+        ("the storefront catalogue is broken", {"product"}, False),
         ("fix the stop hook then", set(), True),
         ("why are my sessions autocompacting at 97%", set(), True),
-        ("push the a venture order sheet", {"another venture", "commerce"}, False),
-        ("migrate everything to codex", set(), False),
+        ("chase the customer invoice", {"commerce"}, False),
+        ("the landing page sitemap is stale", {"site"}, False),
+        ("migrate everything", set(), False),
     ]
-    for text, want_s, want_p in cases:
-        got_s, got_p = surfaces(text), is_plumbing(text)
-        if got_s != want_s or got_p != want_p:
-            print("FAIL %r surfaces=%s want=%s plumbing=%s want=%s"
-                  % (text, got_s, want_s, got_p, want_p))
-            ok = False
+    saved = globals()["SURFACES"]
+    globals()["SURFACES"] = DEFAULT_SURFACES
+    try:
+        for text, want_s, want_p in cases:
+            got_s, got_p = surfaces(text), is_plumbing(text)
+            if got_s != want_s or got_p != want_p:
+                print("FAIL %r surfaces=%s want=%s plumbing=%s want=%s"
+                      % (text, got_s, want_s, got_p, want_p))
+                ok = False
+    finally:
+        globals()["SURFACES"] = saved
     print("RESULT: ALL PASS" if ok else "RESULT: FAIL")
     return 0 if ok else 1
+
 
 
 def main():
