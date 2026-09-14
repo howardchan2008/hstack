@@ -29,18 +29,39 @@ import sys
 # matched one venture instead of nine. A dict literal cannot survive having its
 # keys rewritten; a list of pairs can. Duplicate labels after scrubbing are
 # harmless here because only the pattern decides a match.
-SURFACES = [
-    ("a venture", r"another venture|premier[- ]?trophy|獎盃|trophy|plaque|flag"),
-    ("a venture", r"crystal ?century|another venture|卓越"),
-    ("example.com", r"example.com|the owner-me|spring ?week|writing/"),
-    ("a venture", r"another venture|prior ?moves|13F|filing|market literacy"),
-    ("a venture", r"another venture|parent|student|tutor"),
-    ("a venture", r"another venture|elevate ?os|oxbridge"),
+# HIS SURFACES LIVE IN DATA, NOT IN THIS FILE.
+#
+# They were a literal list here until 2026-09-14, and the public mirror scrubs
+# venture names to a placeholder. Inside a REGEX that is fatal: nine distinct
+# patterns all collapsed to "a venture|another venture|..." so every prompt
+# matched the last one, and the published self-test failed. Codex job 965 caught
+# it. A list of pairs survived having its LABELS rewritten and its PATTERNS still
+# did not.
+#
+# So the venture list is now data the mirror never sees, and this file ships a
+# generic default that is coherent on its own. Mechanism public, roster private.
+SURFACES_FILE = os.path.expanduser("~/.claude/state/surfaces.json")
+DEFAULT_SURFACES = [
+    ("product", r"\bproduct\b|catalogue|catalog|storefront|sku"),
+    ("site", r"\bsite\b|landing page|homepage|sitemap|\bseo\b"),
     ("outreach", r"outreach|linkedin|cold |warm lane|investor|icp"),
-    ("a venture", r"another venture|play console|another venture"),
-    ("sites", r"a venture|another venture|another venture|another venture|another venture|another venture"),
-    ("commerce", r"customer|order|invoice|revenue|ad(s|words)?\b|campaign|conversion|sku"),
+    ("commerce", r"customer|order|invoice|revenue|ad(s|words)?\b|campaign|conversion"),
 ]
+
+
+def _load_surfaces():
+    try:
+        with open(SURFACES_FILE, encoding="utf-8") as fh:
+            rows = json.load(fh)
+        out = [(r["label"], r["pattern"]) for r in rows if r.get("pattern")]
+        if out:
+            return out
+    except Exception:
+        pass
+    return DEFAULT_SURFACES
+
+
+SURFACES = _load_surfaces()
 # My surfaces: the machinery. Real work, but not what he bought.
 PLUMBING = (
     r"hook|settings\.json|launchd|launchagent|weekend-run|weekend-refill|codex-bg"
