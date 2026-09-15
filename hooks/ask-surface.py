@@ -161,6 +161,15 @@ def main():
         print("  DONE unless he asked for them. They are how the work got done, not the work.")
     elif not is_plumbing(ask):
         print("HE NAMED NO VENTURE. Answer the thing he asked, in his words, not in file paths.")
+    # HANDBACK, measured 2026-09-15 over 2,909 close-outs: 92 per cent of August
+    # and 76 per cent of September put something in YOUR MOVE, where the format's
+    # declared target state is "Nothing". Printed here, before the reply is
+    # written, because a Stop-time block would cost a second message and he
+    # banned double texting. One line, no new hook.
+    print("BEFORE YOUR MOVE: 76% of Sept close-outs handed work back. For each line "
+          "you are about to put there, ask whether YOU could do it. If yes, do it "
+          "instead. It belongs to him only if it needs his decision, his account, "
+          "his hands, or his money.")
     return 0
 
 
