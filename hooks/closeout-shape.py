@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """closeout-shape.py: enforce CLAUDE.md "Session close-out format is fixed".
 
-the owner, 2026-08-06: the rule was written 2026-08-04 and obeyed in 0 of 49
+Howard, 2026-08-06: the rule was written 2026-08-04 and obeyed in 0 of 49
 sessions. Text in CLAUDE.md is not enforcement. This is.
 
 Cite CLAUDE.md by SECTION TITLE, never by line number. ADDED 2026-08-12: every
@@ -15,7 +15,7 @@ CLAUDE.md edit, section titles do not.
 Contract, deliberately narrow. It fires ONLY on a turn that did work
 (a tool_use block since the last real user message). Conversational turns,
 questions, mid-task narration: exempt. The failure being fixed is the
-work summary that buries what the owner must do.
+work summary that buries what Howard must do.
 
 Checks, all mechanical:
   R1  first non-blank line is DONE
@@ -34,16 +34,16 @@ Checks, all mechanical:
       was scoped to short bare claims, where sampled precision was only ~40%.
       Long lines carry their own context and are exempt by measurement.
   R7  one close-out per user turn. Not a check on the text: a cap on this hook.
-      If a DONE heading already reached the owner in this turn, every remaining
+      If a DONE heading already reached Howard in this turn, every remaining
       block is logged and the stop is allowed. The only remedy a Stop hook has
       is another assistant message, so a block filed after a delivered close-out
       cannot improve what he read: it can only make him read it twice. Run
       `python3 closeout-shape.py --self-test` after touching any of this.
 
 R4 exists because the author of R1-R3 broke it twice in the same session that
-shipped them, ending close-outs with a STOPPING line in the message the owner
+shipped them, ending close-outs with a STOPPING line in the message Howard
 reads. Those tokens are Claude's bookkeeping. The stop hook may still demand
-one; that answer belongs in the hook exchange, not in the owner's message.
+one; that answer belongs in the hook exchange, not in Howard's message.
 
 Exit 0 = shape ok, or not applicable.  Exit 1 = violation, reasons on stdout.
 Reads the transcript itself so it cannot be fooled by what the model claims.
@@ -62,7 +62,7 @@ import sys
 CEILING = 12
 TAIL_BYTES = 2_000_000
 
-# An ask aimed at the owner. Kept tight on purpose: these are the phrasings that
+# An ask aimed at Howard. Kept tight on purpose: these are the phrasings that
 # actually smuggled decisions into prose, not every sentence with a verb.
 ASK = re.compile(
     r"\b("
@@ -75,7 +75,7 @@ ASK = re.compile(
 )
 
 
-# CLAUDE.md 'BANNED in the close-out'. Internal enforcement vocabulary. the owner should not have to
+# CLAUDE.md 'BANNED in the close-out'. Internal enforcement vocabulary. Howard should not have to
 # retain these to read his own status message.
 BANNED = re.compile(r"\b(STOPPING|NOT-TYPING|NOT-DONE|NND_PARK)\b")
 
@@ -98,7 +98,7 @@ SELF_ASSIGN = re.compile(
 BLOCKER = re.compile(
     r"("
     r"\bblock(ed|er|s)?\b|\bcannot\b|\bcan't\b|\bfails? with\b|\bfailing\b"
-    r"|\bwaiting on\b|\bneeds? (your|the owner|a (credential|token|login|password|card))\b"
+    r"|\bwaiting on\b|\bneeds? (your|howard|a (credential|token|login|password|card))\b"
     r"|\brate.?limit|\bquota\b|\b(4\d\d|5\d\d)\b|\berror\b|\bthrows?\b|\brefus(es|ed|al)\b"
     r"|\bonly you\b|\brequires? (your|his) \b|\bnot mine\b|\bpermission\b"
     r"|\bunresolved\b|\bunidentified\b|\bunknown cause\b"
@@ -113,7 +113,7 @@ BLOCKER = re.compile(
 # The negative lookahead is load-bearing, found in the 2026-08-14 backtest. Without
 # it the top hit was "Unarchive the repo, since I will not change repo settings
 # myself", which is the exact opposite of a parked offer: it is Claude correctly
-# refusing an action and handing over a genuinely the owner-only task. Matching the
+# refusing an action and handing over a genuinely Howard-only task. Matching the
 # negation would have trained the rule to punish the behaviour it wants.
 # Negations never read as an offer. The `(?!')` is needed because "i can" ends on a
 # word boundary inside "i can't", so without it the contraction matched; "couldn't"
@@ -122,7 +122,7 @@ OFFER = re.compile(
     r"\b(i(?:'| wi)ll|i can|i could|happy to|ready to)\b(?!'|\s*(not|never)\b)",
     re.I,
 )
-# Half two: that same action gated on the owner granting it first.
+# Half two: that same action gated on Howard granting it first.
 GATE = re.compile(
     r"\b("
     r"say (the word|go|yes)|give me the (go|word|nod)|greenlight|green light|"
@@ -146,6 +146,18 @@ def tail_lines(path, nbytes=TAIL_BYTES):
             return fh.read().decode("utf-8", "replace").splitlines()
     except OSError:
         return []
+
+
+SPEC = """CLOSE-OUT SHAPE, the one definition (closeout-shape.py --spec; CLAUDE.md points here).
+DONE
+  1. one line per item of his message, in his order, result first, file or surface named;
+     under 300 characters outside quotes; at most max(4, his item count) lines.
+YOUR MOVE
+  - only what needs his account, hands, money or decision, as an exact click or command;
+    otherwise "Nothing. Finished." Asks live here and nowhere else.
+No third section, no FYI. After a refusal: the delta only, still opening with DONE.
+Progress narration written between tool calls is not judged; only the text from the last
+DONE header onward is."""
 
 
 def turn_did_work(transcript_path):
@@ -183,7 +195,7 @@ DONE_HEADING = re.compile(r"^\s*(\*\*|#+\s*)?DONE\b", re.M)
 def prior_closeout_in_turn(transcript_path, current_text=None):
     """True if an assistant message in THIS user turn already carried a DONE heading.
 
-    R7, added 2026-08-17 after the owner read the same close-out twice in one turn.
+    R7, added 2026-08-17 after Howard read the same close-out twice in one turn.
     A Stop hook has exactly one remedy: force another assistant message. So a
     block filed after a correct close-out has already reached him buys a line
     order and costs a duplicate. Measured shape (session 1cbd1ecb): message one
@@ -259,7 +271,7 @@ def split_sections(text):
     return text[: m.start()], text[m.start():]
 
 
-# R8 ADDED 2026-08-28. the owner, across three sessions in two days: "he literally
+# R8 ADDED 2026-08-28. Howard, across three sessions in two days: "he literally
 # provided the numbers here", "i gave u the photos still", "i corrected u on the
 # bb before". owner-facts.py already carries his ASSERTIONS forward into context,
 # and it is wired. What nothing did was CHECK THE WAY OUT: a close-out could ask
@@ -314,7 +326,7 @@ def _looks_pasted(user_text):
 # thirds junk), "half your keychain wasted" (mostly macOS entries), and
 # "gbrain repointed" when the sync had imported zero files.
 # --- R11 ADDED 2026-08-29 -------------------------------------------------
-# the owner: "well corrections are still important and shouldnt be ignored", after
+# Howard: "well corrections are still important and shouldnt be ignored", after
 # R10 was backtested and caught 0 of his 3 August deferral complaints. The two
 # R10 missed were GATED OFFERS, and the finding that matters is that R6 did not
 # catch them either, in its own section, on its own turf:
@@ -357,13 +369,13 @@ SUPPLY = re.compile(
 
 
 # --- R10 ADDED 2026-08-29 -------------------------------------------------
-# the owner: "im not asking you to do the tasks for me, im asking u to audit why the
+# Howard: "im not asking you to do the tasks for me, im asking u to audit why the
 # agent has repeatedly failed to comply with my requests, delegating my ask the
 # next term". His own words three days earlier, 2026-08-26: "u keep delegating me
 # tasks to do, instead of doing it urself".
 #
 # WHY EVERY EXISTING RULE MISSES IT. R3 and R6 both police work handed BACK to
-# the owner. R6 needs OFFER and GATE on one line: an action plus permission asked
+# Howard. R6 needs OFFER and GATE on one line: an action plus permission asked
 # for it. The close-out that prompted this read
 #
 #   "YOUR MOVE
@@ -397,7 +409,7 @@ DEFER = re.compile(
     r"|\bstill (?:not|un)(?:written|built|started|shipped)\b"
     r"|\b(?:left|leaving) (?:it |that )?(?:for|to) (?:the )?next\b"
     r"|\bwill do next\b|\bcoming next\b"
-    # THE THIRD VARIANT, 2026-08-30. the owner: "YOUR MOVE is still deferring,
+    # THE THIRD VARIANT, 2026-08-30. Howard: "YOUR MOVE is still deferring,
     # despite your multitude of fixes." He was right, and the lesson is bigger
     # than the phrase. Each time a wording is banned the next close-out uses a
     # different one:
@@ -410,7 +422,7 @@ DEFER = re.compile(
     r"|\b(?:still )?owed by me\b|\bstill owed\b|\bowed and not done\b"
     r"|\b(?:it|that|these|those) (?:is|are) (?:mine|on me)\b"
     r"|\bmine (?:to do|rather than yours|not yours)\b"
-    # VARIANT FOUR, 2026-08-31. the owner, after restarting a session and watching it
+    # VARIANT FOUR, 2026-08-31. Howard, after restarting a session and watching it
     # happen again: "a restarted session still postponed all items". The wording
     # that got through was "Nothing. Next actions are mine and need no decision
     # from you: fix the llms.txt domain, update Yoast Premium, unhide the GA4
@@ -424,7 +436,7 @@ DEFER = re.compile(
     r"(?:mine|on me|for me|my own)\b"
     r"|\bnot done:(?!\s*$)"
     r"|\boutstanding (?:from|on) me\b|\bstill (?:owe|owed) you\b"
-    # MOVED HERE 2026-09-02 from handoff-gate.py (PARKED). the owner: "why are
+    # MOVED HERE 2026-09-02 from handoff-gate.py (PARKED). Howard: "why are
     # there 3 stop hooks in a row isnt that redundant". Measured before the move:
     # this DEFER missed all three of PARKED's positives ("I keep looking for",
     # "I'll continue digging", "I will report back"), so the two blacklists were
@@ -443,7 +455,7 @@ DEFER_OK = re.compile(
     # NARROWED 2026-08-29, on my own close-out. `\brefus` matched ANY use of the
     # word, so the line "7 hooks still have no proof they refuse: ... Next from
     # me unless you redirect" exempted itself. That is a deferral about refusal
-    # buying a pass because it says refuse. the owner caught it in the same turn
+    # buying a pass because it says refuse. Howard caught it in the same turn
     # the rule shipped: "last turn i explicitly said check every other hook ...
     # and u postponed that to the next turn still".
     #
@@ -454,7 +466,7 @@ DEFER_OK = re.compile(
     # ADDED 2026-09-03: the Codex queue is a real carrier now. A job in
     # ~/.claude/state/jobq.db runs unattended on a seat, lands in `jobq inbox`,
     # and is re-injected into the next prompt of whichever session owns that
-    # repo, so work handed to it comes due without the owner. Before this, a
+    # repo, so work handed to it comes due without Howard. Before this, a
     # close-out saying "queued as Codex job #32" tripped R10 as an empty
     # promise unless it happened to carry a path, which punished the one
     # disposition that actually works.
@@ -501,6 +513,32 @@ NOT_A_CLAIM = re.compile(
     r"|\bwhat survived\b|\bresurfaced\b", re.I)
 
 
+_SESSION_ID = ""
+
+
+def _last_prompt_item_count():
+    """Items prompt-items.py split out of his last prompt, 0 when unknown."""
+    if not _SESSION_ID:
+        return 0
+    path = os.path.expanduser("~/.claude/carryover/%s.json" % _SESSION_ID)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            last = (json.load(fh) or {}).get("last") or {}
+        return len(last.get("items") or [])
+    except Exception:
+        return 0
+
+
+def _unquoted(line):
+    """The line with quoted spans and URLs removed, straight or curly quotes.
+
+    URLs are pointers, not prose; a TestFlight or console link can be 60
+    characters on its own and he asked for the link, so it does not count
+    against the 300 (2026-09-16, after an evening of R14b re-sends)."""
+    line = re.sub(r'"[^"]*"|“[^”]*”', "", line)
+    return re.sub(r"https?://\S+", "", line)
+
+
 def _done_lines(text):
     """Bullet lines inside DONE, which is where completion claims live."""
     before, _after = split_sections(text)
@@ -509,7 +547,7 @@ def _done_lines(text):
         s = ln.strip()
         # NUMBERED ITEMS COUNT TOO. Until 2026-09-07 this only saw "-" and "*"
         # bullets, so every close-out I write, which numbers its items, was
-        # invisible to every length and count rule below. the owner: "i feel like
+        # invisible to every length and count rule below. Howard: "i feel like
         # the above is way too wordy and redundant compared to what i intended
         # for the closeout shape".
         if (s.startswith(("-", "*")) or re.match(r"^\d+[.)]\s", s)) and len(s) > 12:
@@ -530,7 +568,7 @@ def _repo_of_cwd():
 
 
 def _drain_loaded():
-    """Is `com.the owner.jobq-drain` loaded, so a queued job actually gets started?
+    """Is `com.howard.jobq-drain` loaded, so a queued job actually gets started?
 
     Fails CLOSED (returns False) on any error: if this cannot be established, the
     stricter blocking arm of R13 applies, which is the safe direction.
@@ -538,7 +576,7 @@ def _drain_loaded():
     try:
         out = subprocess.run(["/bin/launchctl", "list"], capture_output=True,
                              text=True, timeout=5)
-        return "com.the owner.jobq-drain" in out.stdout
+        return "com.howard.jobq-drain" in out.stdout
     except Exception:
         return False
 
@@ -638,52 +676,52 @@ def check(text, supplied="", inflight=None, drain=None):
     # 3,638 archived transcripts predate the format and hold 4 between them), their
     # non-blank line counts are p50 10, p90 24, max 131, and a 12-line cap would
     # breach 31.3%, not 53.5%. That denominator is off by 7x and counts something
-    # other than close-outs. the owner caught it by asking whether he had ever had that
+    # other than close-outs. Howard caught it by asking whether he had ever had that
     # many turns; there are 81,890 prose turns in total, but only 1,134 opened with
     # DONE. The DEMOTION still stands, on the collapsed-bullet evidence, which is
     # about damage and not about frequency. Do not re-cite the old figures.
     #
-    # R1 RESTORED 2026-08-06, hours after being demoted alongside R2, when the owner
+    # R1 RESTORED 2026-08-06, hours after being demoted alongside R2, when Howard
     # asked whether the format had actually persisted into other sessions. Measured
     # answer: session 0f0abafe had this rule loaded from CLAUDE.md the whole time
     # and opened with DONE in 1 of 521 assistant turns. Demoting R1 was the wrong
-    # read of the backtest. An 86.9% fire rate on a rule the owner states plainly is
+    # read of the backtest. An 86.9% fire rate on a rule Howard states plainly is
     # evidence of non-compliance, not of a bad rule. Unlike R2, the DONE opener
     # costs exactly one line and damages nothing. Text in CLAUDE.md had 49 sessions
     # to work and did not; this is the only thing that has ever bound.
     #
-    # R1 SPLIT 2026-08-14, the owner: "the other sessions still double reply, patch".
+    # R1 SPLIT 2026-08-14, Howard: "the other sessions still double reply, patch".
     # A Stop hook's only remedy is another assistant message, so blocking a
-    # close-out whose CONTENT is already complete buys nothing and costs the owner a
+    # close-out whose CONTENT is already complete buys nothing and costs Howard a
     # second near-identical message. Measured case, session 1cbd1ecb 16:07:57:
     # R1 fired on the first line "Both trees clean, nothing unpushed.", the DONE
     # and YOUR MOVE sections underneath it were correct, and what came back was
-    # the same close-out with the preamble deleted. the owner read it twice.
+    # the same close-out with the preamble deleted. Howard read it twice.
     # So: no DONE section anywhere is a real shape failure and still blocks. A
     # DONE section sitting under a preamble line is advisory, logged not blocked.
     if not re.match(r"^(\*\*)?DONE\b", first):
         has_done = bool(re.search(r"^\s*(\*\*|#+\s*)?DONE\b", text, re.M))
         problems.append(
             "%s close-out must open with DONE (CLAUDE.md 'Session close-out format is fixed'). "
-            "First line was %r. Every response to the owner is DONE / YOUR MOVE, "
+            "First line was %r. Every response to Howard is DONE / YOUR MOVE, "
             "including the ones that feel like conversation."
             % ("R1s" if has_done else "R1", first[:70] or "(empty)")
         )
     del lines  # R2 retired; lines was only needed to find the first one
 
-    # R5 ADDED 2026-08-12, the owner: "FYI is also unaccpetalbe and shdnt exist".
+    # R5 ADDED 2026-08-12, Howard: "FYI is also unaccpetalbe and shdnt exist".
     # FYI was the escape hatch that made "named, not fixed" survivable. Anything
     # real enough to report is either something that was done (DONE) or something
-    # the owner must act on (YOUR MOVE). A third bucket exists precisely so work can
+    # Howard must act on (YOUR MOVE). A third bucket exists precisely so work can
     # be mentioned without being finished and without being handed over, which is
     # the deferral this whole ruleset exists to kill. Note the shape of the miss:
     # R1's OWN violation text taught "DONE / YOUR MOVE / FYI" until this commit,
     # so the enforcer was advertising the section it should have been rejecting.
     if re.search(r"^\s*(\*\*|#+\s*)?FYI\b", text, re.M):
         problems.append(
-            "R5 close-out contains an FYI section (CLAUDE.md 'Two sections, never three', the owner "
+            "R5 close-out contains an FYI section (CLAUDE.md 'Two sections, never three', Howard "
             "2026-08-12: it should not exist). Anything in it either got done, "
-            "and belongs in DONE, or needs the owner, and belongs in YOUR MOVE. "
+            "and belongs in DONE, or needs Howard, and belongs in YOUR MOVE. "
             "If it is neither, it is not worth his attention: cut it."
         )
 
@@ -701,17 +739,17 @@ def check(text, supplied="", inflight=None, drain=None):
             problems.append("R3 ask outside YOUR MOVE (CLAUDE.md 'YOUR MOVE is the only place'): %r" % s[:70])
             break
 
-    # R6 ADDED 2026-08-14, the owner: "u stop there only to where i asked u, naturally
+    # R6 ADDED 2026-08-14, Howard: "u stop there only to where i asked u, naturally
     # u know what the next step might be right". R3 polices WHERE an ask sits and
     # treats YOUR MOVE as a safe harbour, so the one phrasing that survives every
     # existing rule is an offer to do the work once permission arrives. That is not
-    # a request for the owner's judgement, it is Claude's own work held back behind a
+    # a request for Howard's judgement, it is Claude's own work held back behind a
     # turnaround, and CLAUDE.md forbids it twice: "Never park work here to avoid
     # doing it" and "DECIDE, DO NOT ASK".
     #
     # Worked example from the session that prompted this. The close-out ended with
     # "The 52 empty category URLs currently serve nothing. Say go and I will 302
-    # each to its nearest stocked parent." the owner's entire reply was "302 all". The
+    # each to its nearest stocked parent." Howard's entire reply was "302 all". The
     # decision was never his; the round trip bought nothing and cost a turn.
     #
     # Deliberately needs BOTH halves on one line. A YOUR MOVE item that only asks
@@ -724,7 +762,7 @@ def check(text, supplied="", inflight=None, drain=None):
             problems.append(
                 "R6 work parked behind approval in YOUR MOVE (CLAUDE.md 'Never park work "
                 "here to avoid doing it' + 'DECIDE, DO NOT ASK'): %r. You are offering to "
-                "do this yourself, so it is not the owner's move. Do it, then report it under "
+                "do this yourself, so it is not Howard's move. Do it, then report it under "
                 "DONE. Keep it here only if he alone can supply the input or the judgement, "
                 "and then drop the offer and name only what you need." % s[:90]
             )
@@ -784,12 +822,12 @@ def check(text, supplied="", inflight=None, drain=None):
         if SUPPLY.search(s_):
             continue
         # Quoted material is data, not an offer. Same exemption R10 carries:
-        # this session's own close-out quoted the owner's "say regenerate and I
+        # this session's own close-out quoted Howard's "say regenerate and I
         # will rebuild" back at him as evidence and R11 fired on the quote.
         if DEFER_QUOTE.match(s_):
             continue
         problems.append(
-            "R11 work parked behind your assent (the owner 2026-08-24, twice: work "
+            "R11 work parked behind your assent (Howard 2026-08-24, twice: work "
             "finished and held on a trigger word): %r. It is built and you are "
             "the switch. Do it, or name what you are actually missing." % s_[:110]
         )
@@ -803,7 +841,7 @@ def check(text, supplied="", inflight=None, drain=None):
         if DEFER_QUOTE.match(s10) or DEFER_OK.search(s10):
             continue
         problems.append(
-            "R10 work deferred to a future turn (the owner 2026-08-26: 'u keep delegating me "
+            "R10 work deferred to a future turn (Howard 2026-08-26: 'u keep delegating me "
             "tasks to do, instead of doing it urself'): %r. R3 and R6 only catch work handed "
             "BACK to him; this hands it FORWARD to yourself, which no rule priced and nothing "
             "carries. Do it in this turn, or write it into the repo backlog and name the file "
@@ -818,7 +856,7 @@ def check(text, supplied="", inflight=None, drain=None):
     # a blacklist cannot win the race. What every version of the move shares is
     # the STRUCTURE, and it cannot be paraphrased away: YOUR MOVE opens with
     # "Nothing", which is the format's declared target state, and then carries on
-    # to name work that belongs to me. The opener empties the section for the owner
+    # to name work that belongs to me. The opener empties the section for Howard
     # while the sentence after it keeps the job.
     #
     #   legal   "Nothing. Finished."
@@ -854,7 +892,7 @@ def check(text, supplied="", inflight=None, drain=None):
                     and not DEFER_OK.search(rest) and len(rest) > 40):
                 problems.append(
                     "R12 YOUR MOVE opens with %r and then keeps the work anyway: %r. "
-                    "the owner 2026-08-31: 'a restarted session still postponed all items'. "
+                    "Howard 2026-08-31: 'a restarted session still postponed all items'. "
                     "Saying Nothing empties the section for him while the sentence after "
                     "it holds four jobs you named and did not do. Either do them in this "
                     "turn, or write them into a backlog file and name it here, or state "
@@ -867,7 +905,7 @@ def check(text, supplied="", inflight=None, drain=None):
     # ("queued as job #54") because a Codex job is a real carrier that comes due.
     # It is only a carrier while something is waiting for it. On 2026-09-04 job
     # 54 was queued, the turn ended, no `jobq wait` was running and no wakeup was
-    # scheduled, and the job was killed at its 900s deadline. the owner came back 60
+    # scheduled, and the job was killed at its 900s deadline. Howard came back 60
     # minutes later to ask why the session had gone quiet. The exemption was
     # sound and the thing it pointed at was not attached to anything.
     #
@@ -886,7 +924,7 @@ def check(text, supplied="", inflight=None, drain=None):
         ids = ", ".join("#%s (%s)" % (i, s) for i, s in unwaited[:6])
         # NARROWED 2026-09-04, the day after it shipped, and not to let a batch through.
         # The hazard R13 names is a result that reaches NOBODY. A queued job has a real
-        # carrier when `com.the owner.jobq-drain` is loaded: the daemon starts it every
+        # carrier when `com.howard.jobq-drain` is loaded: the daemon starts it every
         # 900s, the reaper now pushes a phone notification on any stalled or failed
         # ending, and `jobq inbox` injects every finished result into the next prompt
         # for this repo. With all three live, an unwaited job is not silence, it is
@@ -901,36 +939,48 @@ def check(text, supplied="", inflight=None, drain=None):
         problems.append(
             "%s %d job(s) are in flight for this repo with no `jobq wait` on them: %s. %s"
             % ("R13a" if carrier else "R13", len(unwaited), ids,
-               ("The drain daemon is loaded, so results still reach the owner by phone on a "
+               ("The drain daemon is loaded, so results still reach Howard by phone on a "
                 "bad ending and by `jobq inbox` on a good one. Attach a waiter only if "
                 "THIS session needs to act on the result."
                 if carrier else
-                "com.the owner.jobq-drain is NOT loaded, so nothing will start or reap these "
+                "com.howard.jobq-drain is NOT loaded, so nothing will start or reap these "
                 "and the result reaches nobody. Run `jobq wait <id>` in the background, or "
                 "load the daemon, or kill the job and say so."))
         )
 
     # R14, 2026-09-07. CLAUDE.md fixes the shape as "what changed, file or
-    # system, ONE LINE EACH, MAX 4 LINES, result first". the owner had to say it
+    # system, ONE LINE EACH, MAX 4 LINES, result first". Howard had to say it
     # again: "i feel like the above is way too wordy and redundant compared to
     # what i intended for the closeout shape". The rule existed; nothing counted.
-    done_items = _done_lines(text)
-    if len(done_items) > 4:
+    # 2026-09-16, reconciled with prompt-items.py after the premier-trophy
+    # session lost five turns to it: prompt-items demands one close-out line
+    # per item Howard gave ("every line closes out"), R14 capped DONE at four,
+    # so a ten-item prompt could not be closed out at all. The cap is now the
+    # larger of four and the item count prompt-items recorded for the last
+    # prompt; a padded close-out on a short prompt still trips it.
+    # Markdown table rows inside DONE are the answer he asked for laid out as a
+    # table (one app per row); they are not items and are not measured as lines.
+    done_items = [x for x in _done_lines(text) if not x.lstrip().startswith("|")]
+    cap = max(4, _last_prompt_item_count())
+    if len(done_items) > cap:
         problems.append(
-            "R14 DONE carries %d items; the format is max 4 (CLAUDE.md 'Session "
-            "close-out format is fixed': one line each, max 4 lines, result "
-            "first). Merge or drop, do not renumber." % len(done_items)
+            "R14 DONE carries %d items; the format is max %d (CLAUDE.md 'Session "
+            "close-out format is fixed': one line each, result first; the cap "
+            "follows the item count of his last prompt). Merge or drop, do not "
+            "renumber." % (len(done_items), cap)
         )
-    longest = max((len(x) for x in done_items), default=0)
+    # R14b measures the line without text he asked to have quoted back: a
+    # verbatim quote is his words, and cutting it to fit would falsify it.
+    longest = max((len(_unquoted(x)) for x in done_items), default=0)
     if longest > 300:
-        worst = max(done_items, key=len)
+        worst = max(done_items, key=lambda x: len(_unquoted(x)))
         problems.append(
-            "R14b a DONE item runs %d characters. 'One line each' means one line: "
-            "the result and the file, not the reasoning behind it. Worst line "
-            "starts %r." % (longest, worst[:70])
+            "R14b a DONE item runs %d characters outside quotes. 'One line each' "
+            "means one line: the result and the file, not the reasoning behind "
+            "it. Worst line starts %r." % (longest, worst[:70])
         )
 
-    # R15, 2026-09-07. the owner: "i told u to ignore PT so why did u still surface
+    # R15, 2026-09-07. Howard: "i told u to ignore PT so why did u still surface
     # it to me in the YOUR MOVE". Work handed to another session is that
     # session's, and repeating its open question back to him is asking him to
     # carry a message he already delegated. YOUR MOVE is for what only he can
@@ -938,9 +988,9 @@ def check(text, supplied="", inflight=None, drain=None):
     _before, _ymove = split_sections(text)
     if _ymove:
         here = (_repo_of_cwd() or "").rsplit("/", 1)[-1].lower()
-        others = {"premier-trophy": ("premier-trophy", "a venture", "獎盃", " pt "),
-                  "a venture": ("another venture", "another venture"),
-                  "a venture": ("another venture",), "another venture": ("another venture",),
+        others = {"premier-trophy": ("premier-trophy", "ptrophy", "獎盃", " pt "),
+                  "priormoves": ("priormoves", "prior moves"),
+                  "elevateos": ("elevateos",), "elysian": ("elysian",),
                   "outreach": ("outreach",), "hstack": ("hstack",)}
         low = " " + _ymove.lower() + " "
         for repo, tokens in others.items():
@@ -950,13 +1000,13 @@ def check(text, supplied="", inflight=None, drain=None):
             if hit_tok:
                 problems.append(
                     "R15 YOUR MOVE raises %s while this session is in %s (matched "
-                    "%r). Work handed to another session is not the owner's move: it "
+                    "%r). Work handed to another session is not Howard's move: it "
                     "is that session's. Drop it, or state it under DONE as handed "
                     "over." % (repo, here or "?", hit_tok.strip())
                 )
                 break
 
-    # R16, 2026-09-09. the owner: "u keep saying urs to fix but dont fix it, that
+    # R16, 2026-09-09. Howard: "u keep saying urs to fix but dont fix it, that
     # means the hook isnt making u do the work, u need to fix the stop hook
     # then". He is describing a real hole: every rule above polices the SHAPE
     # of a close-out and none of them police whether the work happened. Four
@@ -965,7 +1015,7 @@ def check(text, supplied="", inflight=None, drain=None):
     #
     # A promise is allowed only when it names what stops it. "Still mine" with
     # no blocker is a deferral; "still mine, the OpenNext bundle does not ship
-    # the wasm" is a status report, and the difference is whether the owner can
+    # the wasm" is a status report, and the difference is whether Howard can
     # tell why it did not happen. So: reserving work to myself requires a
     # blocker in the same line, otherwise do it in this turn.
     for _line in [x.strip(" -*\t") for x in text.splitlines() if x.strip()]:
@@ -976,7 +1026,7 @@ def check(text, supplied="", inflight=None, drain=None):
         problems.append(
             "R16 this line reserves work to you and names no blocker: %r. Either "
             "do it in this turn, or say what stops it (an error, a missing "
-            "credential, something only the owner can do). A close-out is not a "
+            "credential, something only Howard can do). A close-out is not a "
             "place to schedule yourself." % _line[:90]
         )
         break
@@ -985,7 +1035,7 @@ def check(text, supplied="", inflight=None, drain=None):
     if hit:
         problems.append(
             "R4 internal token %r in the close-out (CLAUDE.md 'BANNED in the close-out'). It belongs "
-            "in the hook exchange, not in the owner's message." % hit.group(1)
+            "in the hook exchange, not in Howard's message." % hit.group(1)
         )
     return problems
 
@@ -1087,7 +1137,7 @@ def _self_test():
               "r9 negative control: fired on an honest non-completion")
 
     # NEGATIVE CONTROL 4: a named artefact in backticks is evidence.
-    art = "DONE\n- Wired `com.the owner.jobq-drain` and it drained.\n\nYOUR MOVE\n- Nothing."
+    art = "DONE\n- Wired `com.howard.jobq-drain` and it drained.\n\nYOUR MOVE\n- Nothing."
     check_arm(not any(p.startswith("R9 ") for p in check(art)),
               "r9 negative control: fired on a named artefact")
 
@@ -1098,7 +1148,7 @@ def _self_test():
            "i gave u the photos still")
     r8_hit = check("DONE\n- x\n\nYOUR MOVE\n- Tell me the MC525 sizes and I will run it.",
                    supplied=his)
-    # R10 arms. The blocking one is the exact close-out the owner pasted 2026-08-29.
+    # R10 arms. The blocking one is the exact close-out Howard pasted 2026-08-29.
     defer = ("DONE\n- Footer fixed, verified live.\n\nYOUR MOVE\n"
              "Nothing. Next from me, in this order and without asking: the ads "
              "reconfiguration script for your mum, then the thumbnails.")
@@ -1126,7 +1176,7 @@ def _self_test():
     check_arm(not any(p.startswith("R10 ") for p in check(quo)),
               "R10 fired on quoted draft copy")
     # a clean close-out must stay clean
-    # R11 arms. The blocking one is the exact YOUR MOVE line the owner corrected on
+    # R11 arms. The blocking one is the exact YOUR MOVE line Howard corrected on
     # 2026-08-24, verbatim from that close-out.
     g11 = ("DONE\n- Staged all 20, nothing sent.\n\nYOUR MOVE\n"
            "- If you would rather the copy had come off the free lane, say "
@@ -1138,11 +1188,11 @@ def _self_test():
     check_arm(not any(p.startswith("R11 ") for p in check(
                   "DONE\n- Forward rule researched.\n\nYOUR MOVE\n"
                   "- Tell me when it is on and I will read the triage.")),
-              "R11 fired on an event only the owner can cause")
+              "R11 fired on an event only Howard can cause")
     check_arm(not any(p.startswith("R11 ") for p in check(
                   "DONE\n- x\n\nYOUR MOVE\n"
                   "- Give me the password and I will finish it.")),
-              "R11 fired on a fact only the owner holds")
+              "R11 fired on a fact only Howard holds")
     check_arm(not any(p.startswith("R11 ") for p in check(
                   "DONE\n- Backtested.\n\nYOUR MOVE\n- Nothing.\n"
                   "> say regenerate and I will rebuild all 20")),
@@ -1154,14 +1204,14 @@ def _self_test():
            "- If you want to write the incident framework properly for us, tell me "
            "what you would want in return and I will make the time.")
     check_arm(not any(p.startswith("R11 ") for p in check(sup)),
-              "R11 fired on a fact only the owner can supply")
+              "R11 fired on a fact only Howard can supply")
     check_arm(not any(p.startswith("R11 ") for p in
-                      check("DONE\n- Footer now reads a venture.com, verified live."
+                      check("DONE\n- Footer now reads ptrophy.com, verified live."
                             "\n\nYOUR MOVE\n- Nothing.")),
               "R11 false-positive on a clean close-out")
 
     check_arm(not any(p.startswith("R10 ") for p in
-                      check("DONE\n- Footer now reads a venture.com, verified live.\n\nYOUR MOVE\n- Nothing.")),
+                      check("DONE\n- Footer now reads ptrophy.com, verified live.\n\nYOUR MOVE\n- Nothing.")),
               "R10 false-positive on a clean close-out")
 
     # PARKED arms, moved 2026-09-02 from handoff-gate.py with the regex. The
@@ -1174,7 +1224,7 @@ def _self_test():
         check_arm(any(p.startswith("R10 ") for p in
                       check("DONE\n- x\n\nYOUR MOVE\n" + parked_line)),
                   "R10 missed a first-person promise (PARKED half dead): %r" % parked_line)
-    for fine_line in ("- I keep the local proxy in the path; it saves 20-30%.",
+    for fine_line in ("- I keep pxpipe in the path; it saves 20-30%.",
                       "- Restart the sessions yourself; I cannot press the button."):
         check_arm(not any(p.startswith("R10 ") for p in
                           check("DONE\n- x\n\nYOUR MOVE\n" + fine_line)),
@@ -1196,7 +1246,7 @@ def _self_test():
     check_arm(any(p.startswith("R10 ") for p in check(own)),
               "R10 missed a deferral that merely mentions refusing")
 
-    # The THIRD variant, 2026-08-30, verbatim from a live close-out the owner read.
+    # The THIRD variant, 2026-08-30, verbatim from a live close-out Howard read.
     # Banning a wording just moves the wording, so this one is matched on shape:
     # work attributed to me and stated as outstanding.
     owed = ("DONE\n- Deleted 581 products, restore map written.\n\nYOUR MOVE\n"
@@ -1298,7 +1348,7 @@ def _self_test():
         # check() directly, so all of them passed for weeks while main() was
         # reporting its findings in a form the harness discards: plain text on
         # stdout and exit 1, which on a Stop hook is a NON-BLOCKING error. The
-        # rules were correct and nothing was ever blocked. the owner found it by
+        # rules were correct and nothing was ever blocked. Howard found it by
         # watching a live session defer on ten turns with R10 green.
         #
         # So these run the file as a SUBPROCESS, the way settings.json calls it,
@@ -1331,7 +1381,7 @@ def _self_test():
         check_arm(bool(check("Here is what happened.\n\nDONE\n- a\n\nYOUR MOVE\n- Nothing. Finished.")),
                   "arm1: a preamble close-out should still be flagged")
 
-        # Arm 2: a close-out already reached the owner this turn. Nothing may force another.
+        # Arm 2: a close-out already reached Howard this turn. Nothing may force another.
         with open(repeat, "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"type": "user", "message": {"content": "do the thing"}}) + "\n")
             fh.write(line("assistant", "working on it", tool=True) + "\n")
@@ -1416,10 +1466,15 @@ def _from_stdin():
     is indistinguishable from no guard, and it is worse than none, because
     its existence is cited as coverage.
     """
+    if "--spec" in sys.argv:
+        print(SPEC)
+        sys.exit(0)
     try:
         payload = json.load(sys.stdin)
     except Exception:
         return None, ""
+    global _SESSION_ID
+    _SESSION_ID = str(payload.get("session_id") or "")
     transcript = payload.get("transcript_path") or ""
     text = payload.get("last_assistant_message") or ""
     if not text and transcript and os.path.exists(transcript):
@@ -1441,6 +1496,14 @@ def _from_stdin():
                             break
         except Exception:
             pass
+    # 2026-09-16, Howard: "the closeout shape is messed up ... its messed up everywhere".
+    # Measured: R1/R1s fired 146 times in seven days, almost all on a progress line the
+    # harness itself asks for mid-turn ("say in a few words what you're doing") that sits
+    # ABOVE a correct DONE block in the same message. The close-out is the part from the
+    # last DONE header onward; what precedes it is narration, not shape. Judge only that.
+    done_heads = list(re.finditer(r"^\s*(\*\*|#+\s*)?DONE\b", text, re.M))
+    if done_heads:
+        text = text[done_heads[-1].start():].lstrip()
     return transcript, text
 
 
@@ -1451,7 +1514,7 @@ def user_supplied(transcript_path):
     identifiers live in his own messages (SKUs, part names, pasted dimension
     blocks), so the corpus to match against is his turns and nothing else.
     Assistant turns are excluded on purpose: a token this session INVENTED
-    must never count as something the owner supplied.
+    must never count as something Howard supplied.
     """
     out = []
     try:
@@ -1517,7 +1580,7 @@ def advise(transcript, text):
     So R10 and R12 were correct, measured, green, and INERT, which is the
     exact failure the file already documents one layer down: a guard nobody
     calls is worse than no guard because its existence is cited as coverage.
-    A restart did not fix it either - the owner watched a restarted session
+    A restart did not fix it either - Howard watched a restarted session
     postpone every item.
 
     UserPromptSubmit does fire (measured the same day: prompt-items.py,
@@ -1544,7 +1607,7 @@ def advise(transcript, text):
     # reads Y, does not match, and re-delivers X. The log shows what that cost:
     # 1,142 advisory lines carrying 123 distinct findings, so 1,019 were repeats,
     # 859 of them within five seconds of the previous copy, and one finding
-    # ("R12 YOUR MOVE opens with '- Nothing.'") was delivered 479 times. the owner:
+    # ("R12 YOUR MOVE opens with '- Nothing.'") was delivered 479 times. Howard:
     # "'Nothing. Finished.' is still duplicated".
     #
     # A ROLLING SET fixes it without a lock: every key ever advised stays for the
@@ -1565,7 +1628,7 @@ def advise(transcript, text):
     except Exception:
         pass
     _log_advisory(blocking, prefix="advise | ")
-    print("YOUR LAST CLOSE-OUT FAILED THIS, and the owner has already read it:")
+    print("YOUR LAST CLOSE-OUT FAILED THIS, and Howard has already read it:")
     for p in blocking:
         print("  - " + p)
     print("Do not re-send that close-out. Do the named work in THIS turn, or "
@@ -1603,7 +1666,7 @@ def main():
     # bucket, i.e. work mentioned but neither done nor handed over) and R6 (work
     # parked behind approval). The rest ask for the same content rearranged, and
     # the only way this hook can ask for anything is to make Claude send a second
-    # message, so enforcing them costs the owner a duplicate reply and buys a line
+    # message, so enforcing them costs Howard a duplicate reply and buys a line
     # order. Advisory findings are logged and measurable, never blocked.
     blocking = [p for p in problems if p.startswith(BLOCKING_RULES)]
     advisory = [p for p in problems if p not in blocking]
@@ -1621,7 +1684,7 @@ def main():
     if not blocking:
         return 0
 
-    # R7 2026-08-17, the owner: "u just double replied". Once a close-out has been
+    # R7 2026-08-17, Howard: "u just double replied". Once a close-out has been
     # delivered in this turn, no rule here may demand another message. The block
     # is recorded so the rule stays measurable, and the turn is allowed to end.
     if prior_closeout_in_turn(transcript, text):
@@ -1637,7 +1700,7 @@ def main():
         return 0
 
     # THE PROTOCOL, and it is the reason none of this ever fired. Found
-    # 2026-08-29, after the owner watched a live premier-trophy session defer on
+    # 2026-08-29, after Howard watched a live premier-trophy session defer on
     # every one of ten turns with R10 shipped and green.
     #
     # This printed plain text to STDOUT and returned 1. On a Stop hook, exit 1
@@ -1661,7 +1724,7 @@ def main():
         "reason": (
             "CLOSE-OUT SHAPE: %d blocking finding(s).\n%s\n\n"
             # THIS LINE CAUSED THE DOUBLE-TEXT, four times in a row. A Stop
-            # hook fires AFTER the message has reached the owner, so "send it
+            # hook fires AFTER the message has reached Howard, so "send it
             # again" orders a second full close-out for something he has
             # already read. His words, 2026-09-07: "u still double texted
             # the closeout shape, u made a mistake 4 times consecutively".
