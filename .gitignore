@@ -7,3 +7,4 @@ __pycache__/
 # repo root; it must never be published from this public repo.
 OPEN-ITEMS.md
 .wrangler/
+.playwright-cli/
