@@ -363,6 +363,16 @@ one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
 
+### `probe-gate.py` &nbsp;·&nbsp; JSON block
+
+Asks the owner's seven probing questions of any pitch, strategy, plan, deck or
+proposal file the session wrote (who is it for in one plain sentence, why would a
+stranger share it, which words are technical, what is unproven, who pays and when,
+where do the first hundred users come from, which earlier-venture lesson it
+repeats) through a local Ollama model, and refuses the Stop until the file carries
+answers under `## Holes the harness found`. Zero Claude tokens; fails open with a
+note when no local model answers. Carries a `--self-test`.
+
 ### `encourage.py` &nbsp;·&nbsp; no block
 
 The reward side. Prints the evidenced wins of the last 24 hours (awards the

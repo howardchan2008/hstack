@@ -122,9 +122,13 @@ def main() -> int:
             failures.append(report)
     if not failures:
         return 0
-    sys.stderr.write("PROBE GATE: the owner's questions, asked before he has to. Answer each OPEN\n"
-                     "line inside the file under the section below, then stop again.\n\n")
-    sys.stderr.write("\n\n".join(failures) + "\n")
+    reason = ("PROBE GATE: the owner's questions, asked before he has to. Answer each OPEN "
+              "line inside the file under the section below, then stop again.\n\n"
+              + "\n\n".join(failures))
+    # Stop hooks refuse with a JSON decision object on stdout (the harness reads it);
+    # stderr carries the same text for a human reading the log.
+    print(json.dumps({"decision": "block", "reason": reason[:6000]}))
+    sys.stderr.write(reason + "\n")
     return 2
 
 
