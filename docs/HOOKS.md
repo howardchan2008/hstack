@@ -328,7 +328,7 @@ conversation the entire time.
 
 It does not make the operator automatically right, and that distinction is the
 point: the same day he stated something the shipped binary contradicts. The rule
-is not "obey", it is "do not contradict SILENTLY" — quote what he said, show the
+is not "obey", it is "do not contradict SILENTLY", quote what he said, show the
 measurement, name the discrepancy. Lines he has already had to repeat once are
 marked, because a repeat is evidence the agent lost it before.
 
@@ -362,6 +362,21 @@ Refuses a report that answers something other than the question that was asked:
 one that opens with method instead of the answer, that hands work back which
 the agent could have done, or that offers to do a thing instead of doing it.
 Carries a `--self-test`.
+
+### `long-run-gate.py` &nbsp;·&nbsp; exit 2
+
+Refuses a Bash wait loop (`while`/`until` with `sleep`) that does not carry
+`JOB_ETA=<seconds>` from a measured rate, and refuses one whose ETA is over 3300 s
+outright: the harness caps a background call at an hour, so a longer loop is a
+guaranteed empty turn. The lane for those is `jobq add --lane local --deadline
+<eta+slack> -- <poll command>`, whose result is injected into the next prompt by
+`carryover-queue.py`. Also refuses a paid GPU submission (Vertex custom jobs, SkyPilot,
+Modal, Azure ML, SageMaker) unless the command carries the smoke token and
+`~/.claude/state/smoke-ok` is under two hours old, written only by a CPU dry run of the
+same trainer. Measured 2026-09-16: eleven watcher turns that said "still running" and
+six GPU jobs that each failed on one config error a dry run catches in a minute. Like
+every text-scanning guard here, prose that names its patterns trips it. Self-test:
+`--self-test`.
 
 ### `probe-gate.py` &nbsp;·&nbsp; JSON block
 

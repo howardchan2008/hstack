@@ -332,6 +332,14 @@
       "runner": "python3",
       "block": "none",
       "refuses": "nothing: it is the reward side. Prints the evidenced wins of the last day and the single most expensive open deduction, and prints NOTHING when there is no evidence, so it cannot become a participation trophy. Half of sessions are a silent control arm, because whether encouragement helps is a measurement, not an assumption"
+    },
+    {
+      "file": "long-run-gate.py",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "runner": "python3",
+      "block": "exit2",
+      "refuses": "a wait loop without a measured JOB_ETA, or with one over the hour-long background cap (route it through jobq), and any paid GPU submission without a fresh CPU smoke marker"
     }
   ]
 }

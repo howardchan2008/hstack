@@ -61,7 +61,7 @@ and a report that reads as finished. `prompt-items.py`, `carryover-queue.py` and
 
 | | |
 |---|---|
-| `hooks/` | 40 hooks: 17 `PreToolUse`, 2 `PostToolUse`, 4 `SessionStart`, 7 `UserPromptSubmit`, 10 `Stop` |
+| `hooks/` | 41 hooks: 18 `PreToolUse`, 2 `PostToolUse`, 4 `SessionStart`, 7 `UserPromptSubmit`, 10 `Stop` |
 | `hooks.manifest.json` | the wiring, and the single source of truth for it |
 | `rules/common/` | the always-loaded rules the guards enforce |
 | `tests/` | a suite that fails when a guard stops refusing |
