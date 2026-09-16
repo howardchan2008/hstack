@@ -157,7 +157,9 @@ YOUR MOVE
     otherwise "Nothing. Finished." Asks live here and nowhere else.
 No third section, no FYI. After a refusal: the delta only, still opening with DONE.
 Progress narration written between tool calls is not judged; only the text from the last
-DONE header onward is."""
+DONE header onward is.
+A line that repeats one from the previous close-out (word overlap 60 per cent or more) is
+refused: he read it already. Say only what changed since."""
 
 
 def turn_did_work(transcript_path):
@@ -190,6 +192,68 @@ def turn_did_work(transcript_path):
 
 
 DONE_HEADING = re.compile(r"^\s*(\*\*|#+\s*)?DONE\b", re.M)
+
+
+def previous_closeout(transcript_path, current_text=None):
+    """The most recent EARLIER close-out text in this transcript, or "".
+
+    R17, 2026-09-16. Howard: "closeout shape i meant its duplicating context and content
+    so redundant mostly". The delta rule after a refusal existed; nothing enforced it
+    across turns, so every close-out re-listed what the last one had said. This returns
+    the last assistant message with a DONE heading that is not the one under judgement.
+    """
+    head = (current_text or "").strip()[:200]
+    skipped_self = not head
+    for ln in reversed(tail_lines(transcript_path, nbytes=TAIL_BYTES * 4)):
+        if '"type"' not in ln or '"assistant"' not in ln:
+            continue
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        c = (d.get("message") or {}).get("content") or []
+        t = "".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+        if not DONE_HEADING.search(t):
+            continue
+        if not skipped_self and t.strip()[:200] == head:
+            skipped_self = True
+            continue
+        return t
+    return ""
+
+
+_WORD = re.compile(r"[a-z0-9]{3,}")
+
+
+def _tokens(line):
+    return set(_WORD.findall(line.lower()))
+
+
+def repeated_lines(text, previous):
+    """DONE and YOUR MOVE lines of `text` that say what `previous` already said.
+
+    Overlap is token Jaccard on words of three letters or more, threshold 0.6, so a line
+    that reports a NEW result about the same file passes and a re-listing does not.
+    """
+    if not previous:
+        return []
+    prev = [_tokens(l) for l in previous.splitlines() if l.strip().startswith(("-", "*")) or re.match(r"^\s*\d+\.", l)]
+    prev = [p for p in prev if len(p) >= 4]
+    hits = []
+    for l in text.splitlines():
+        if not (l.strip().startswith(("-", "*")) or re.match(r"^\s*\d+\.", l)):
+            continue
+        cur = _tokens(l)
+        if len(cur) < 4:
+            continue
+        for p in prev:
+            j = len(cur & p) / float(len(cur | p))
+            if j >= 0.6:
+                hits.append(l.strip()[:90])
+                break
+    return hits
 
 
 def prior_closeout_in_turn(transcript_path, current_text=None):
@@ -1451,6 +1515,14 @@ def _self_test():
                 with open(state, "w", encoding="utf-8") as fh:
                     fh.write(saved)
 
+    # ---- R17: a line he read in the previous close-out is not a delta -----
+    prev = "DONE\n- Monday card live: first post out on LinkedIn and X, image plus the ledger numbers.\n\nYOUR MOVE\n- Nothing."
+    same = "DONE\n- Monday card live on LinkedIn and X, image plus the ledger numbers.\n\nYOUR MOVE\n- Nothing."
+    new = "DONE\n- Reddit lane: Data API access request is the path; script apps still issued after approval.\n\nYOUR MOVE\n- Nothing."
+    check_arm(len(repeated_lines(same, prev)) == 1, "r17: a re-listed DONE line is caught")
+    check_arm(repeated_lines(new, prev) == [], "r17: a new result about the same venture passes")
+    check_arm(repeated_lines(new, "") == [], "r17: no previous close-out, nothing to compare")
+
     for f in fails:
         print("  - " + f)
     print("closeout-shape self-test: %s" % ("FAIL" if fails else "PASS"))
@@ -1555,7 +1627,7 @@ def user_supplied(transcript_path):
 # actually had a DONE section. Verified: a close-out opening "Here is what
 # happened." returned R1s as NON-blocking before this line, blocking after.
 BLOCKING_RULES = ("R1 ", "R1s ", "R3 ", "R5 ", "R6 ", "R8 ", "R9 ", "R10 ", "R11 ",
-                  "R12 ", "R13 ", "R14 ", "R14b ", "R16 ")
+                  "R12 ", "R13 ", "R14 ", "R14b ", "R16 ", "R17 ")
 
 ADVISE_STATE = os.path.join(os.path.expanduser("~"), ".claude", "state", "closeout-advised.txt")
 
@@ -1658,6 +1730,12 @@ def main():
         return 0
     problems = check(text, supplied=user_supplied(transcript),
                      inflight=_unwaited_jobs(_session_queued_ids(transcript)))
+    # R17, 2026-09-16: a line he already read in the previous close-out is not a delta.
+    for rep in repeated_lines(text, previous_closeout(transcript, text)):
+        problems.append(
+            "R17 this line repeats what the previous close-out already said: %r. "
+            "He has read it; drop it, or state only what changed since." % rep
+        )
     if not problems:
         return 0
 
