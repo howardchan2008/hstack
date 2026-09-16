@@ -35,6 +35,7 @@ from pathlib import Path
 
 LOOP_RE = re.compile(r"\b(while|until)\b[^\n]*?\bsleep\s+\d+", re.S)
 ETA_RE = re.compile(r"\bJOB_ETA=(\d+)\b")
+JOBQ_RE = re.compile(r"\bjobq\s+add\b")
 CAP = 3300
 GPU_SUBMIT_RE = re.compile(
     r"gcloud\s+(?:alpha\s+|beta\s+)?ai\s+custom-jobs\s+create|\bsky\s+launch\b|\bmodal\s+run\b|"
@@ -47,6 +48,8 @@ SMOKE_MAX_AGE = 2 * 3600
 def check(cmd: str, now: float | None = None) -> str | None:
     """Return a refusal message, or None to allow."""
     now = now or time.time()
+    if JOBQ_RE.search(cmd):
+        return None  # the jobq lane is the sanctioned home for a long wait; its drainer has no hour cap
     if LOOP_RE.search(cmd):
         m = ETA_RE.search(cmd)
         if not m:
@@ -89,6 +92,7 @@ def self_test() -> int:
         ("JOB_ETA=1200; while :; do sleep 60; done", None, False),
         ("JOB_ETA=18000; until grep -q DONE log; do sleep 300; done", None, True),
         ("ls; git status", None, False),
+        ("jobq add --lane local --deadline 21600 -- bash -c 'until done; do sleep 600; done'", None, False),
         ("gcloud ai custom-jobs create --region=x --config=y", None, True),
         ("SMOKE_OK=1 gcloud ai custom-jobs create --region=x --config=y", None, True),  # no marker
     ]
