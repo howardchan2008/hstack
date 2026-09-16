@@ -209,6 +209,10 @@
           },
           {
             "type": "command",
+            "command": "python3 $HOME/.claude/hooks/probe-gate.py"
+          },
+          {
+            "type": "command",
             "command": "bash $HOME/.claude/hooks/context-save.sh"
           },
           {

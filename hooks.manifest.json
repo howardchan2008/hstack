@@ -206,6 +206,14 @@
       "refuses": "a report that answers something other than the question that was asked"
     },
     {
+      "file": "probe-gate.py",
+      "event": "Stop",
+      "matcher": null,
+      "runner": "python3",
+      "block": "json",
+      "refuses": "ending the turn on a pitch, strategy or plan file that has not answered the owner's seven probing questions (asked of a local model, zero Claude tokens; fails open without one)"
+    },
+    {
       "file": "context-save.sh",
       "event": "Stop",
       "matcher": null,
