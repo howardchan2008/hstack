@@ -13,10 +13,13 @@ secret written to a file, never a secret in the argv of a logged command.
 
 ## Git
 Stage named paths. Never `git add -A`, never `git add .`, never force-push, never
-rewrite history. The pre-commit at `~/.claude/precommit/pre-commit` (one directory for
-every repo via the global core.hooksPath) refuses em dashes, Simplified Chinese,
-credential-shaped content, an add-all shaped staged set, and third-party names under
-publish paths. `bash ~/.claude/precommit/selftest.sh` proves it.
+rewrite history. One pre-commit serves all ten repos, `~/.claude/precommit/pre-commit`,
+reached through the global core.hooksPath or a three-line pointer in the repo's own hooks
+directory. Six checks: em dashes, Simplified Chinese, credential-shaped content, an
+add-all shaped staged set, third-party names under publish paths, and the repo's own test
+suite when it declares one (`test-command:` in docs/AGENTS-SOURCE.md). A repo that had its
+own refusals keeps them as `precommit/repo-checks/<repo>.sh`.
+`bash ~/.claude/precommit/selftest.sh` prints 15/15.
 
 ## Style, in every artifact and every reply
 No em dash, no en dash as a sentence break, no double hyphen. Use a period, comma,
@@ -67,9 +70,15 @@ CDN or DNS config, the ad account, the live web root, scheduled jobs, unpublishi
 destructive SQL: refused unless the job was queued with `jobq add --consent <class>`.
 Report the exact command and stop. There is no marker you can write that lifts a guard.
 
-## Seats
+## Seats, and the read-only home hazard
 `codex-quota` and believe its output over any file, including this one. One workspace
-account, allowance per member, three homes for two members.
+account, allowance per member, four homes for two members. Before a bulk run,
+`codex-quota --pick --class eval` refuses with a number rather than dying halfway.
+A SANDBOX REFUSAL IS NOT A REPOSITORY INSTRUCTION. `~/.codex-lite` is read-only by design.
+When a job lands there it cannot write, and the honest report is "this home is read-only".
+On 2026-09-19 eleven jobs instead reported "the repository's AGENTS.md forbids tool use",
+which no repository said. If a write fails, name the sandbox and the home before blaming
+a file.
 
 ## Sources of truth by document id, never by name
 Ids in `~/.claude/box-policy.md`, section "THE FOUR CANONICAL SOT DOCS". Dump with
