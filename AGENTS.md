@@ -104,16 +104,16 @@ refusal. Verify a capability against the live source before saying a tool cannot
 
 ## Ten wrong beliefs a fresh agent brings here, with the check that settles each
 Full list of 33: ~/howard-os-data/sot/KNOWN-WRONG-BELIEFS-FOR-CODEX.md
-1. Do not assume a preference or fact he already stated does not carry forward on its own. Check: `~/.claude/hooks/owner-facts.py` output and `~/.claude/SOT-DIG
-2. Do not assume a fix written into a `feedback_*.md` memory file is live behaviour. Check: grep `~/.claude/hooks` and `~/.claude/bin` for the path or rule befo
-3. Do not assume a claim in a venture SOT gdoc stays true. Check: `cd ~/.config/gdoc && ~/.venvs/agent-libs/bin/python dump_all.py <docId>` with ids from `regis
-4. Do not assume you should ask before acting on an unclear step.
-5. Do not assume a capability or state claim ("the tool cannot", "it is done", "the figure is X") is safe from memory. Check: `~/.claude/bin/verify-live.sh`, th
+1. Do not assume a preference or fact he already stated does not carry forward on its own. Check: `~/.claude/hooks/owner-facts.py` output and `~/.claude/SOT-DIGEST.md` before answe
+2. Do not assume a fix written into a `feedback_*.md` memory file is live behaviour. Check: grep `~/.claude/hooks` and `~/.claude/bin` for the path or rule before trusting it is en
+3. Do not assume a claim in a venture SOT gdoc stays true. Check: `cd ~/.config/gdoc && ~/.venvs/agent-libs/bin/python dump_all.py <docId>` with ids from `registry.json`, then the 
+4. Do not assume you should ask before acting on an unclear step. Instead: the standing instruction is decide, execute, report, no menus; questions belong only in YOUR MOVE and onl
+5. Do not assume a capability or state claim ("the tool cannot", "it is done", "the figure is X") is safe from memory. Check: `~/.claude/bin/verify-live.sh`, the STATE-VERIFY block
 6. Do not assume a defect corrected once will not recur. Check: `faults list --week` and `faults claims` before repeating a pattern he has already corrected.
-7. Do not assume a number, currency or quote you produced mid-session is accurate. Check: read the json, parquet, DB row or API response for every number before
-8. Do not assume answering the main part of a multi-item message closes it. Check: split the prompt into items before the first tool call; `~/.claude/hooks/prom
+7. Do not assume a number, currency or quote you produced mid-session is accurate. Check: read the json, parquet, DB row or API response for every number before stating it; prose i
+8. Do not assume answering the main part of a multi-item message closes it. Check: split the prompt into items before the first tool call; `~/.claude/hooks/prompt-items.py --self-t
 9. Do not assume LinkedIn state (sent, replied, connected) from memory. Check: a live `mcp__linkedin__*` call or the LinkedIn export, never the queue file.
-10. Do not assume Codex account state (quota, login, which `CODEX_HOME`) is as last recorded. Check: `codex-quota`, and base64-decode `tokens.id_token` in each 
+10. Do not assume Codex account state (quota, login, which `CODEX_HOME`) is as last recorded. Check: `codex-quota`, and base64-decode `tokens.id_token` in each `~/.codex*/auth.json
 
 ## Ten changes from five months of harness work (HARNESS-EFFORT section 6)
 1. One repository per prompt.
